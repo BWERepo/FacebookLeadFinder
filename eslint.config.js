@@ -41,12 +41,13 @@ export default tseslint.config(
           ],
           patterns: [
             {
-              // The ZIP dataset is ~900 KB. Pulling it into a route/component
-              // would blow the Worker bundle budget — go through
-              // @/lib/geo.functions instead, which is server-only.
-              group: ["@/data/zips.data", "**/data/zips.data"],
+              // The ZIP dataset is meant to grow to the full ~41,700-row USPS
+              // set. Pulling it into a route/component would blow the Worker
+              // bundle budget — go through @/lib/geo.functions instead, which
+              // is server-only.
+              group: ["@/data/zips.seed", "**/data/zips.seed", "@/data/geo", "**/data/geo"],
               message:
-                "Import the ZIP dataset only from server code. UI code should call the server functions in @/lib/geo.functions.",
+                "Import ZIP-backed lookups only from server code, via @/lib/geo.functions. States and counties (@/data/states, @/data/counties) are fine to import directly.",
             },
           ],
         },
@@ -57,8 +58,15 @@ export default tseslint.config(
     },
   },
   {
-    // Server-only modules are allowed to reach for the big datasets directly.
-    files: ["**/*.server.ts", "**/*.functions.ts", "tasks/**/*.ts", "src/data/**/*.ts"],
+    // Server-only modules, and the data layer itself, may reach the big
+    // datasets directly.
+    files: [
+      "**/*.server.ts",
+      "**/*.functions.ts",
+      "tasks/**/*.ts",
+      "src/data/**/*.ts",
+      "scripts/**/*.mjs",
+    ],
     rules: { "no-restricted-imports": "off" },
   },
   eslintPluginPrettier,
