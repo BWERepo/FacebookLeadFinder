@@ -1,7 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Archive, ArchiveRestore, Bookmark, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  Bookmark,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/AppShell";
@@ -28,8 +36,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { archiveLeads, deleteLeads, listLeads, unarchiveLeads } from "@/lib/leads.functions";
 import { getDemoDataStatus, loadDemoData, removeDemoData } from "@/lib/demo-data.functions";
+import { exportLeads } from "@/lib/export.functions";
+import type { ExportFormat } from "@/lib/domain";
 import {
   LEAD_STATUSES,
   LEAD_STATUS_LABELS,
@@ -82,6 +98,7 @@ function LeadsPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [demoBusy, setDemoBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const { data: demoStatus } = useQuery({
     queryKey: ["demo-data-status"],
@@ -222,6 +239,34 @@ function LeadsPage() {
     }
   }
 
+  async function handleExport(format: ExportFormat) {
+    setExporting(true);
+    try {
+      const result = await exportLeads({
+        data: {
+          format,
+          search: search || undefined,
+          leadStatus: leadStatus || undefined,
+          websiteStatus: websiteStatus || undefined,
+          archived,
+        },
+      });
+      const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: result.mimeType });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = result.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Exported ${result.count} lead(s)`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not export leads.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const allOnPageSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
 
   return (
@@ -230,15 +275,38 @@ function LeadsPage() {
         title="Saved Leads"
         description="Every lead found or imported, with its website-verification status."
         actions={
-          demoStatus?.loaded ? (
-            <Button size="sm" variant="outline" disabled={demoBusy} onClick={handleRemoveDemoData}>
-              Remove demo data
-            </Button>
-          ) : (
-            <Button size="sm" variant="outline" disabled={demoBusy} onClick={handleLoadDemoData}>
-              Load demo data
-            </Button>
-          )
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" disabled={exporting}>
+                  <Download className="mr-1.5 size-4" aria-hidden="true" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleExport("csv")}>
+                  Export as CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("xlsx")}>
+                  Export as XLSX
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {demoStatus?.loaded ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={demoBusy}
+                onClick={handleRemoveDemoData}
+              >
+                Remove demo data
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" disabled={demoBusy} onClick={handleLoadDemoData}>
+                Load demo data
+              </Button>
+            )}
+          </>
         }
       />
 

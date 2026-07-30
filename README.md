@@ -148,8 +148,8 @@ build, because Nitro reads exactly one wrangler file.
 | 5     | Mock provider + chunked background search jobs                   | Done   |
 | 6     | Leads table and lead details page                                | Done   |
 | 7     | Seeded demo data (25+ fictional businesses)                      | Done   |
-| 8     | Dashboard and charts                                             |        |
-| 9     | CSV and XLSX export                                              |        |
+| 8     | Dashboard and charts                                             | Done   |
+| 9     | CSV and XLSX export                                              | Done   |
 | 10    | CSV/XLSX import wizard                                           |        |
 | 11    | Settings and the Google Places adapter                           |        |
 | 12    | Hardening, documentation, production deploy                      |        |
