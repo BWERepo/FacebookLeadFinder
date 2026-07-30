@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { archiveLeads, deleteLeads, listLeads, unarchiveLeads } from "@/lib/leads.functions";
+import { getDemoDataStatus, loadDemoData, removeDemoData } from "@/lib/demo-data.functions";
 import {
   LEAD_STATUSES,
   LEAD_STATUS_LABELS,
@@ -80,6 +81,12 @@ function LeadsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [demoBusy, setDemoBusy] = useState(false);
+
+  const { data: demoStatus } = useQuery({
+    queryKey: ["demo-data-status"],
+    queryFn: () => getDemoDataStatus(),
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ["leads", { search, leadStatus, websiteStatus, archived, sortBy, sortDir, page }],
@@ -187,6 +194,34 @@ function LeadsPage() {
     }
   }
 
+  async function handleLoadDemoData() {
+    setDemoBusy(true);
+    try {
+      const result = await loadDemoData();
+      toast.success(`Loaded ${result.count} demo leads`);
+      await qc.invalidateQueries({ queryKey: ["demo-data-status"] });
+      await refetch();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load demo data.");
+    } finally {
+      setDemoBusy(false);
+    }
+  }
+
+  async function handleRemoveDemoData() {
+    setDemoBusy(true);
+    try {
+      const result = await removeDemoData();
+      toast.success(`Removed ${result.count} demo leads`);
+      await qc.invalidateQueries({ queryKey: ["demo-data-status"] });
+      await refetch();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove demo data.");
+    } finally {
+      setDemoBusy(false);
+    }
+  }
+
   const allOnPageSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
 
   return (
@@ -194,6 +229,17 @@ function LeadsPage() {
       <PageHeader
         title="Saved Leads"
         description="Every lead found or imported, with its website-verification status."
+        actions={
+          demoStatus?.loaded ? (
+            <Button size="sm" variant="outline" disabled={demoBusy} onClick={handleRemoveDemoData}>
+              Remove demo data
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" disabled={demoBusy} onClick={handleLoadDemoData}>
+              Load demo data
+            </Button>
+          )
+        }
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">

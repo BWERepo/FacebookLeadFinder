@@ -147,7 +147,7 @@ build, because Nitro reads exactly one wrangler file.
 | 4     | Geo data: states, counties, ZIPs, area codes                     | Done   |
 | 5     | Mock provider + chunked background search jobs                   | Done   |
 | 6     | Leads table and lead details page                                | Done   |
-| 7     | Seeded demo data (25+ fictional businesses)                      |        |
+| 7     | Seeded demo data (25+ fictional businesses)                      | Done   |
 | 8     | Dashboard and charts                                             |        |
 | 9     | CSV and XLSX export                                              |        |
 | 10    | CSV/XLSX import wizard                                           |        |
