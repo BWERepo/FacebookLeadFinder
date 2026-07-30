@@ -142,11 +142,11 @@ build, because Nitro reads exactly one wrangler file.
 | Phase | Scope                                                            | Status |
 | ----- | ---------------------------------------------------------------- | ------ |
 | 1     | Scaffold, build pipeline, app shell, auth page                   | Done   |
-| 2     | Supabase schema, migrations, RLS, sign-in                        |        |
-| 3     | Pure domain core: verification, confidence, dedupe, sanitization |        |
-| 4     | Geo data: states, counties, ZIPs, area codes                     |        |
-| 5     | Mock provider + chunked background search jobs                   |        |
-| 6     | Leads table and lead details page                                |        |
+| 2     | Supabase schema, migrations, RLS, sign-in                        | Done   |
+| 3     | Pure domain core: verification, confidence, dedupe, sanitization | Done   |
+| 4     | Geo data: states, counties, ZIPs, area codes                     | Done   |
+| 5     | Mock provider + chunked background search jobs                   | Done   |
+| 6     | Leads table and lead details page                                | Done   |
 | 7     | Seeded demo data (25+ fictional businesses)                      |        |
 | 8     | Dashboard and charts                                             |        |
 | 9     | CSV and XLSX export                                              |        |
