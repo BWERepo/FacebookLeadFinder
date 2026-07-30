@@ -197,7 +197,10 @@ export function emailDomain(email: string | null | undefined): string | null {
   if (typeof email !== "string") return null;
   const at = email.lastIndexOf("@");
   if (at <= 0 || at === email.length - 1) return null;
-  const domain = email.slice(at + 1).trim().toLowerCase();
+  const domain = email
+    .slice(at + 1)
+    .trim()
+    .toLowerCase();
   return domain.includes(".") ? domain : null;
 }
 

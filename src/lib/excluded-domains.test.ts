@@ -238,14 +238,18 @@ describe("spec edge cases", () => {
 
   it("a marketplace storefront flips with the setting", () => {
     const store = "https://suziscrafts.square.site";
-    expect(countsAsWebsite(classifyDomain(store), {
-      countMarketplace: false,
-      countGoogleBusiness: false,
-    })).toBe(false);
-    expect(countsAsWebsite(classifyDomain(store), {
-      countMarketplace: true,
-      countGoogleBusiness: false,
-    })).toBe(true);
+    expect(
+      countsAsWebsite(classifyDomain(store), {
+        countMarketplace: false,
+        countGoogleBusiness: false,
+      }),
+    ).toBe(false);
+    expect(
+      countsAsWebsite(classifyDomain(store), {
+        countMarketplace: true,
+        countGoogleBusiness: false,
+      }),
+    ).toBe(true);
   });
 
   it("disabling the marketplace rule also disables its path patterns", () => {

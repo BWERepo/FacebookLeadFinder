@@ -446,25 +446,30 @@ describe("findDuplicate — no false positives", () => {
 
   it("still applies certain rules even with every optional rule off", () => {
     const existing = [lead({ id: "a", normalized_facebook_url: "facebook.com/Joes" })];
-    const match = findDuplicate(
-      { normalized_facebook_url: "facebook.com/Joes" },
-      existing,
-      { phone_only: false, name_and_zip: false, email: false, fuzzy_name_and_city: false },
-    );
+    const match = findDuplicate({ normalized_facebook_url: "facebook.com/Joes" }, existing, {
+      phone_only: false,
+      name_and_zip: false,
+      email: false,
+      fuzzy_name_and_city: false,
+    });
     expect(match?.rule).toBe("exact_facebook_url");
   });
 });
 
 describe("mergePatch", () => {
+  // Annotated rather than inferred: from a literal, TypeScript narrows
+  // `email: null` to the type `null`, which then rejects a string in the patch.
+  type Fields = Record<string, string | null | undefined>;
+
   it("fills only blank fields", () => {
-    const existing = { email: null, phone: "8655550142", city: "" };
+    const existing: Fields = { email: null, phone: "8655550142", city: "" };
     const patch = mergePatch(existing, { email: "info@x.com", phone: "4235550199", city: "Knox" });
     expect(patch).toEqual({ email: "info@x.com", city: "Knox" });
   });
 
   it("never overwrites a known value with a blank one", () => {
     // A later, thinner source must not erase what an earlier one established.
-    const existing = { email: "info@x.com" };
+    const existing: Fields = { email: "info@x.com" };
     expect(mergePatch(existing, { email: null })).toEqual({});
     expect(mergePatch(existing, { email: "" })).toEqual({});
     expect(mergePatch(existing, { email: undefined })).toEqual({});
