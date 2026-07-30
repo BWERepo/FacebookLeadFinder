@@ -1,0 +1,12 @@
+# Normalize to LF in the repository. Without this, working on Windows commits
+# CRLF into files that Prettier and the Cloudflare build both expect to be LF,
+# and every checkout on another machine shows the whole tree as modified.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

@@ -1,0 +1,10 @@
+node_modules
+dist
+.output
+.nitro
+.wrangler
+package-lock.json
+src/routeTree.gen.ts
+src/data/*.data.ts
+src/data/counties.json
+supabase/migrations

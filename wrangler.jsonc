@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "facebookleadfinder-staging",
+  "compatibility_date": "2026-07-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {},
+  // Deliberately omitted:
+  //   "main" / "assets" — nitro's cloudflare-module preset always overrides these
+  //                       when it writes .output/server/wrangler.json, and warns
+  //                       if you set them here.
+  //   "triggers"        — nitro appends the crons declared in vite.config.ts.
+  //   "routes"          — added by scripts/deploy.mjs for the production Worker
+  //                       only, once a custom domain exists.
+  // Secrets (SUPABASE_SERVICE_ROLE_KEY, GOOGLE_PLACES_API_KEY) live in Worker
+  // secrets via `wrangler secret put`, never in this file.
+}
