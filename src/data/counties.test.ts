@@ -10,8 +10,8 @@ import {
 
 describe("countiesForState", () => {
   it("returns the bundled counties for a covered state", () => {
-    expect(countiesForState("TN")).toEqual([]); // not yet bundled — see below
     expect(countiesForState("DE")).toEqual(["Kent", "New Castle", "Sussex"]);
+    expect(countiesForState("TN")).toHaveLength(95);
   });
 
   it("is case-insensitive", () => {
@@ -19,8 +19,9 @@ describe("countiesForState", () => {
   });
 
   it("returns an empty array for an uncovered or unknown state", () => {
-    // Documents the degrade-gracefully contract rather than throwing.
-    expect(countiesForState("WY")).toEqual([]);
+    // Documents the degrade-gracefully contract rather than throwing. DC has
+    // no counties; ZZ isn't a real state code.
+    expect(countiesForState("DC")).toEqual([]);
     expect(countiesForState("ZZ")).toEqual([]);
     expect(countiesForState(null)).toEqual([]);
   });
@@ -29,7 +30,8 @@ describe("countiesForState", () => {
 describe("hasCountyData", () => {
   it("reflects real coverage, not a guess", () => {
     expect(hasCountyData("CA")).toBe(true);
-    expect(hasCountyData("WY")).toBe(false);
+    expect(hasCountyData("WY")).toBe(true);
+    expect(hasCountyData("DC")).toBe(false);
   });
 });
 
