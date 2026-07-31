@@ -1,19 +1,20 @@
 /**
- * Brave Search API — a general web-search lookup used as a secondary source
- * for two things Google Places can't tell us about a business with no
- * independent website: whether it has a Facebook page, and a published
- * email address.
+ * Brave Search API — a general web-search lookup used for three things
+ * Google Places alone can't give google-places.provider.server.ts: whether a
+ * no-website business has a Facebook page, a published email address for it,
+ * and — via `discoverViaFacebookSearch` — finding candidate businesses in
+ * the first place that Places' own search missed or ranked low, by searching
+ * `site:facebook.com` instead of Places' structured directory.
  *
  * This is deliberately NOT a `SearchProvider`. Brave has no structured
  * business directory (no radius search, no place records), so it can never
- * serve `searchBusinesses` — see brave.provider.stub.ts for that (still
- * unimplemented) full-provider shape. What Brave *can* do is what
- * google-places.provider.server.ts's `findFacebookPage`/`findPublicEmail`
- * need for a no-website business: search the open web for the business by
- * name and location, then read whatever public results come back —
- * directories, listings, mentions — for a literal Facebook URL or email
- * address. Facebook itself is never fetched or scraped, only whatever Brave
- * already indexed about it (see COMPLIANCE.md).
+ * serve `searchBusinesses` on its own — see brave.provider.stub.ts for that
+ * (still unimplemented) full-provider shape. What Brave *can* do is search
+ * the open web by name and location (or `site:facebook.com` plus a location)
+ * and read whatever public results come back — directories, listings,
+ * mentions, Facebook page titles — for a literal Facebook URL, email
+ * address, or business name. Facebook itself is never fetched or scraped,
+ * only whatever Brave already indexed about it (see COMPLIANCE.md).
  *
  * Same compliance rule as everywhere else in this folder: never construct or
  * guess an address. Every email this can return came from parsed page
@@ -46,13 +47,17 @@ export function isBraveSearchConfigured(): boolean {
 }
 
 /** Raw web search — exported separately so it's testable without the email-probing side effects. */
-export async function braveWebSearch(query: string): Promise<BraveSearchResult[]> {
+export async function braveWebSearch(
+  query: string,
+  count = MAX_RESULTS_TO_PROBE * 2,
+): Promise<BraveSearchResult[]> {
   const apiKey = process.env.BRAVE_SEARCH_API_KEY;
   if (!apiKey) return [];
 
   const url = new URL(BRAVE_SEARCH_URL);
   url.searchParams.set("q", query);
-  url.searchParams.set("count", String(MAX_RESULTS_TO_PROBE * 2));
+  // Brave's API caps a single request at 20 results.
+  url.searchParams.set("count", String(Math.min(count, 20)));
 
   const response = await fetchWithBackoff(
     "brave",
@@ -161,4 +166,55 @@ export async function findFacebookPageViaWebSearch(business: {
   }
 
   return null;
+}
+
+export type FacebookSearchCandidate = { name: string };
+
+/**
+ * A Facebook page's Brave-indexed title is usually "Business Name | Facebook"
+ * or "Business Name - Home | Facebook" — strip that suffix to get a plausible
+ * business name. Returns `null` (never a guess) when nothing sensible is left.
+ */
+function extractBusinessName(title: string): string | null {
+  const stripped = title
+    .replace(/\s*[|–-]\s*(Home\s*)?[|–-]?\s*Facebook\s*$/i, "")
+    .replace(/\s*\|\s*Facebook\s*$/i, "")
+    .trim();
+  return stripped.length > 0 ? stripped : null;
+}
+
+/**
+ * Discover candidate businesses via a `site:facebook.com` web search — Places'
+ * own ranking/coverage sometimes just doesn't surface a business that would
+ * otherwise qualify, and a business's Facebook page being indexed by Brave is
+ * itself a signal worth following up on. Only Brave's own already-indexed
+ * result titles/URLs are read here; Facebook itself is never fetched — see
+ * COMPLIANCE.md.
+ *
+ * Returns bare candidate names, not full business records: names alone are
+ * not evidence of anything (no address, no confirmed identity), which is why
+ * the caller (google-places.provider.server.ts) looks each one up for real
+ * via Places before treating it as an actual candidate — this function's job
+ * is discovery, not verification.
+ */
+export async function discoverViaFacebookSearch(
+  locationQuery: string,
+): Promise<FacebookSearchCandidate[]> {
+  if (!isBraveSearchConfigured()) return [];
+
+  const results = await braveWebSearch(`site:facebook.com ${locationQuery}`, 20);
+
+  const seen = new Set<string>();
+  const candidates: FacebookSearchCandidate[] = [];
+  for (const result of results) {
+    if (!isFacebookWebsiteUri(result.url)) continue;
+    if (!normalizeFacebookUrl(result.url)) continue; // rejects utility paths
+    const name = extractBusinessName(result.title);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push({ name });
+  }
+  return candidates;
 }

@@ -207,6 +207,83 @@ describe("createGooglePlacesProvider", () => {
     expect(secondBody.pageToken).toBeUndefined();
   });
 
+  it("reports a fallback sentinel (not null) once :searchText genuinely runs out of pages", async () => {
+    process.env.GOOGLE_PLACES_API_KEY = "test-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ places: [] }), { status: 200 })),
+    );
+
+    const provider = createGooglePlacesProvider();
+    const criteria: AreaCodeCriteria = {
+      searchType: "area_code",
+      areaCode: "865",
+      city: "Knoxville",
+      state: "TN",
+      category: "Bakery",
+      maxResults: 100,
+    };
+    const page = await provider.searchBusinesses(criteria, {});
+    expect(page.nextPageToken).not.toBeNull();
+  });
+
+  it("falls back to a site:facebook.com discovery pass once :searchText is exhausted, confirming each candidate via a real Places lookup", async () => {
+    process.env.GOOGLE_PLACES_API_KEY = "test-key";
+    process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+
+    const fetchMock = vi.fn().mockImplementation(async (input: unknown) => {
+      const url = String(input);
+      if (url.includes("api.search.brave.com")) {
+        return new Response(
+          JSON.stringify({
+            web: {
+              results: [
+                {
+                  title: "Wild Love Bakehouse | Facebook",
+                  url: "https://www.facebook.com/wildlovebakehouse",
+                  description: "Bakery in Knoxville, TN.",
+                },
+              ],
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      // Places :searchText — used for both the sentinel-triggering exhausted
+      // page and the per-candidate lookup that follows.
+      return new Response(JSON.stringify({ places: [SAMPLE_PLACE] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = createGooglePlacesProvider();
+    const criteria: AreaCodeCriteria = {
+      searchType: "area_code",
+      areaCode: "865",
+      city: "Knoxville",
+      state: "TN",
+      category: "Bakery",
+      maxResults: 100,
+    };
+
+    const page = await provider.searchBusinesses(criteria, {
+      pageToken: "__facebook_search_fallback__",
+    });
+
+    const braveCall = fetchMock.mock.calls.find((call: unknown[]) =>
+      String(call[0]).includes("api.search.brave.com"),
+    );
+    expect(braveCall).toBeDefined();
+    expect(String(braveCall![0])).toContain(encodeURIComponent("site:facebook.com"));
+    expect(page.businesses).toHaveLength(1);
+    expect(page.businesses[0].name).toBe(SAMPLE_PLACE.displayName.text);
+    // One-shot — nothing left to chain to after the Facebook-discovery pass.
+    expect(page.nextPageToken).toBeNull();
+  });
+
+  afterEach(() => {
+    delete process.env.BRAVE_SEARCH_API_KEY;
+  });
+
   it("throws ProviderAuthError on a 401/403 response", async () => {
     process.env.GOOGLE_PLACES_API_KEY = "test-key";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));

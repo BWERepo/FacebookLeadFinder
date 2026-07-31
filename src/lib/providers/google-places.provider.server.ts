@@ -27,6 +27,7 @@
 
 import { fetchWithBackoff } from "@/lib/providers/http";
 import {
+  discoverViaFacebookSearch,
   findEmailViaWebSearch,
   findFacebookPageViaWebSearch,
 } from "@/lib/providers/brave-search.server";
@@ -49,6 +50,10 @@ const PAGE_SIZE = 20;
 
 /** See searchBusinesses — signals "switch from :searchNearby to :searchText now", not a real Places token. */
 const SEARCH_TEXT_FALLBACK = "__search_text_fallback__";
+/** See searchBusinesses — signals "switch to the site:facebook.com discovery pass now". */
+const FACEBOOK_SEARCH_FALLBACK = "__facebook_search_fallback__";
+/** Caps the Places lookup calls the Facebook-discovery pass can spend confirming candidate names. */
+const MAX_FACEBOOK_LOOKUPS = 10;
 
 const SEARCH_FIELD_MASK_COMMON = [
   "places.id",
@@ -197,16 +202,24 @@ export function createGooglePlacesProvider(): SearchProvider {
     async searchBusinesses(criteria, cursor: ProviderCursor): Promise<SearchPage> {
       const categoryHint = resolveCategory(criteria.category).label;
 
-      // :searchNearby has no pagination of its own at all — it never returns
-      // a nextPageToken, so it can only ever give one page of up to
-      // PAGE_SIZE results. To actually keep searching past that (see the
-      // discover/verify loop in searches.functions.ts, which relies on
-      // nextPageToken being non-null to know there's more to try), a
-      // zip_radius search uses :searchNearby for its first page only, then
-      // falls back to :searchText — which does paginate — using the same
-      // location-in-text-query approach area_code/state_county already use.
-      // SEARCH_TEXT_FALLBACK is a sentinel, never a real Places page token:
-      // it just tells the next call "switch modes now, starting fresh."
+      // A three-stage discovery chain, chained entirely through sentinel
+      // "page tokens" that are never real Places tokens — each stage's
+      // completion signals which stage runs next:
+      //
+      //   1. :searchNearby (zip_radius only) — one page, no pagination of
+      //      its own at all. -> SEARCH_TEXT_FALLBACK
+      //   2. :searchText, paginated for real via Places' own tokens, until
+      //      it genuinely runs out. -> FACEBOOK_SEARCH_FALLBACK
+      //   3. A `site:facebook.com` Brave web search for businesses Places'
+      //      own search missed or ranked low, each looked up for real via
+      //      Places (by name) to get an authoritative record before it's
+      //      treated as a genuine candidate. One-shot, no further paging.
+      //
+      // Stage 3 exists because Places' own ranking/coverage sometimes just
+      // doesn't surface a business that would otherwise qualify — see
+      // brave-search.server.ts's discoverViaFacebookSearch for the
+      // compliance boundary (never fetches Facebook, only Brave's own
+      // already-indexed results).
       const nearby =
         criteria.searchType === "zip_radius" && !cursor.pageToken
           ? (() => {
@@ -215,11 +228,11 @@ export function createGooglePlacesProvider(): SearchProvider {
             })()
           : null;
 
-      let response: SearchResponse;
+      let businesses: RawBusiness[];
       let nextPageToken: string | null;
 
       if (nearby) {
-        response = await callPlaces("searchNearby", {
+        const response = await callPlaces("searchNearby", {
           includedTypes: [],
           maxResultCount: PAGE_SIZE,
           locationRestriction: {
@@ -229,17 +242,32 @@ export function createGooglePlacesProvider(): SearchProvider {
             },
           },
         });
+        businesses = (response.places ?? []).map((p) => mapPlaceToRawBusiness(p, categoryHint));
         nextPageToken = SEARCH_TEXT_FALLBACK;
+      } else if (cursor.pageToken === FACEBOOK_SEARCH_FALLBACK) {
+        const candidates = await discoverViaFacebookSearch(textQueryFor(criteria));
+        businesses = [];
+        for (const candidate of candidates.slice(0, MAX_FACEBOOK_LOOKUPS)) {
+          const lookup = await callPlaces("searchText", {
+            textQuery: `${candidate.name} ${textQueryFor(criteria)}`,
+          });
+          const first = lookup.places?.[0];
+          if (first) businesses.push(mapPlaceToRawBusiness(first, categoryHint));
+        }
+        nextPageToken = null; // one-shot — nothing left to chain to after this
       } else {
         const pageToken =
           cursor.pageToken && cursor.pageToken !== SEARCH_TEXT_FALLBACK
             ? cursor.pageToken
             : undefined;
-        response = await callPlaces("searchText", { textQuery: textQueryFor(criteria), pageToken });
-        nextPageToken = response.nextPageToken ?? null;
+        const response = await callPlaces("searchText", {
+          textQuery: textQueryFor(criteria),
+          pageToken,
+        });
+        businesses = (response.places ?? []).map((p) => mapPlaceToRawBusiness(p, categoryHint));
+        nextPageToken = response.nextPageToken ?? FACEBOOK_SEARCH_FALLBACK;
       }
 
-      const businesses = (response.places ?? []).map((p) => mapPlaceToRawBusiness(p, categoryHint));
       return { businesses, nextPageToken, calls: 1 };
     },
 

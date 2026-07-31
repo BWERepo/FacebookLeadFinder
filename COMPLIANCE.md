@@ -45,12 +45,17 @@ Every candidate business enters the app through one of:
 
 - **The Google Places API (New) v1** — a licensed, paid API
   ([`google-places.provider.server.ts`](src/lib/providers/google-places.provider.server.ts)).
-- **The Brave Search API** — a licensed API with a free tier, used only as a
-  secondary email-discovery step for a business Places found with no website
-  of its own
-  ([`brave-search.server.ts`](src/lib/providers/brave-search.server.ts)); see
-  §3. It never discovers candidate businesses themselves — Brave has no
-  structured business directory to do that with.
+- **The Brave Search API** — a licensed API with a free tier
+  ([`brave-search.server.ts`](src/lib/providers/brave-search.server.ts)),
+  used for: a secondary email-discovery step for a business Places found
+  with no website of its own (§3); confirming whether such a business has a
+  Facebook page, when Places' own listing doesn't say; and discovering
+  candidate businesses via a `site:facebook.com` web search, for businesses
+  Places' own search missed or ranked low. That last one still isn't Brave
+  acting as a structured business directory the way Places is — it reads a
+  Facebook page's title/URL exactly as Brave already indexed them (never
+  fetching Facebook itself), then looks the resulting business name up for
+  real via Places before treating it as an actual candidate.
 - **A user-supplied CSV/XLSX import** — the user's own data, brought in
   through the Phase 10 import wizard.
 - **A Facebook URL a user pastes in manually** — never fetched by this app on

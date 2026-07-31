@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   braveWebSearch,
+  discoverViaFacebookSearch,
   findEmailViaWebSearch,
   findFacebookPageViaWebSearch,
   isBraveSearchConfigured,
@@ -292,5 +293,119 @@ describe("findFacebookPageViaWebSearch", () => {
     process.env.BRAVE_SEARCH_API_KEY = "test-key";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ web: { results: [] } })));
     expect(await findFacebookPageViaWebSearch(business)).toBeNull();
+  });
+});
+
+describe("discoverViaFacebookSearch", () => {
+  const originalKey = process.env.BRAVE_SEARCH_API_KEY;
+
+  afterEach(() => {
+    if (originalKey === undefined) delete process.env.BRAVE_SEARCH_API_KEY;
+    else process.env.BRAVE_SEARCH_API_KEY = originalKey;
+    vi.unstubAllGlobals();
+  });
+
+  it("returns an empty array with no key configured, without calling fetch", async () => {
+    delete process.env.BRAVE_SEARCH_API_KEY;
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await discoverViaFacebookSearch("Bakery Knoxville, TN")).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("sends a site:facebook.com query", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "test-key";
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ web: { results: [] } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await discoverViaFacebookSearch("Bakery Knoxville, TN");
+
+    const [url] = fetchMock.mock.calls[0];
+    const parsed = new URL(String(url));
+    expect(parsed.searchParams.get("q")).toBe("site:facebook.com Bakery Knoxville, TN");
+  });
+
+  it("extracts a business name from a Facebook page's indexed title", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "test-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          web: {
+            results: [
+              {
+                title: "Wild Love Bakehouse | Facebook",
+                url: "https://www.facebook.com/wildlovebakehouse",
+                description: "Knoxville, TN bakery.",
+              },
+              {
+                title: "Magpies Bakery - Home | Facebook",
+                url: "https://www.facebook.com/magpiesbakery",
+                description: "Knoxville, TN bakery.",
+              },
+            ],
+          },
+        }),
+      ),
+    );
+
+    const candidates = await discoverViaFacebookSearch("Bakery Knoxville, TN");
+    expect(candidates).toEqual([{ name: "Wild Love Bakehouse" }, { name: "Magpies Bakery" }]);
+  });
+
+  it("ignores non-Facebook results and Facebook utility paths", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "test-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          web: {
+            results: [
+              {
+                title: "Best Bakeries in Knoxville - Yelp",
+                url: "https://yelp.com/search?find_desc=bakery",
+                description: "Top rated bakeries.",
+              },
+              {
+                title: "Log into Facebook",
+                url: "https://www.facebook.com/login/",
+                description: "Log in to Facebook to start sharing.",
+              },
+            ],
+          },
+        }),
+      ),
+    );
+
+    expect(await discoverViaFacebookSearch("Bakery Knoxville, TN")).toEqual([]);
+  });
+
+  it("dedupes candidates that appear more than once", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "test-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          web: {
+            results: [
+              {
+                title: "Wild Love Bakehouse | Facebook",
+                url: "https://www.facebook.com/wildlovebakehouse",
+                description: "Bakery",
+              },
+              {
+                title: "Wild Love Bakehouse | Facebook",
+                url: "https://www.facebook.com/wildlovebakehouse/photos",
+                description: "Bakery photos",
+              },
+            ],
+          },
+        }),
+      ),
+    );
+
+    const candidates = await discoverViaFacebookSearch("Bakery Knoxville, TN");
+    expect(candidates).toEqual([{ name: "Wild Love Bakehouse" }]);
   });
 });
