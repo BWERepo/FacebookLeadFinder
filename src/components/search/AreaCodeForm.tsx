@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,9 @@ import {
 import { CategoryPicker } from "@/components/search/CategoryPicker";
 import { areaCodeCriteriaSchema, type AreaCodeCriteria } from "@/lib/search-criteria";
 import { STATES } from "@/data/states";
+import { AREA_CODES } from "@/data/area-codes";
+
+const OTHER_AREA_CODE = "__other__";
 
 export function AreaCodeForm({
   busy,
@@ -27,6 +30,17 @@ export function AreaCodeForm({
   const [category, setCategory] = useState("");
   const [maxResults, setMaxResults] = useState(100);
   const [error, setError] = useState<string | null>(null);
+  const [customMode, setCustomMode] = useState(false);
+
+  const areaCodeOptions = useMemo(
+    () =>
+      [...AREA_CODES]
+        .map((entry) => ({ ...entry, label: `${entry.cities.join(", ")} (${entry.code})` }))
+        .sort(
+          (a, b) => a.cities[0].localeCompare(b.cities[0], "en") || a.code.localeCompare(b.code),
+        ),
+    [],
+  );
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,15 +65,54 @@ export function AreaCodeForm({
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-1.5">
           <Label htmlFor="area-code">Area code</Label>
-          <Input
-            id="area-code"
-            inputMode="numeric"
-            placeholder="865"
-            value={areaCode}
-            onChange={(e) => setAreaCode(e.target.value)}
-            maxLength={3}
-            required
-          />
+          {customMode ? (
+            <>
+              <Input
+                id="area-code"
+                inputMode="numeric"
+                placeholder="865"
+                value={areaCode}
+                onChange={(e) => setAreaCode(e.target.value)}
+                maxLength={3}
+                required
+                autoFocus
+              />
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+                onClick={() => {
+                  setCustomMode(false);
+                  setAreaCode("");
+                }}
+              >
+                Choose from the list instead
+              </button>
+            </>
+          ) : (
+            <Select
+              value={areaCode}
+              onValueChange={(v) => {
+                if (v === OTHER_AREA_CODE) {
+                  setCustomMode(true);
+                  setAreaCode("");
+                  return;
+                }
+                setAreaCode(v);
+              }}
+            >
+              <SelectTrigger id="area-code">
+                <SelectValue placeholder="Choose an area" />
+              </SelectTrigger>
+              <SelectContent>
+                {areaCodeOptions.map((entry) => (
+                  <SelectItem key={entry.code} value={entry.code}>
+                    {entry.label}
+                  </SelectItem>
+                ))}
+                <SelectItem value={OTHER_AREA_CODE}>Other (enter manually)</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="ac-city">City (optional)</Label>

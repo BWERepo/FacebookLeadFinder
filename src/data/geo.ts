@@ -113,4 +113,22 @@ export function zipsForAreaCodeCities(
   return ZIP_SEED.filter((z) => wanted.has(z.city.toLowerCase()));
 }
 
+/**
+ * Distinct city/state areas in the bundled ZIP seed, one representative ZIP
+ * per area, sorted alphabetically by city name — backs the "choose a known
+ * area" shortcut on the ZIP radius search form. Not exhaustive (see
+ * `zips.seed.ts`); the form's ZIP field still takes any 5-digit ZIP.
+ */
+export function listKnownAreas(): readonly { zip: string; city: string; state: string }[] {
+  const seen = new Set<string>();
+  const areas: { zip: string; city: string; state: string }[] = [];
+  for (const z of ZIP_SEED) {
+    const key = `${z.city.toLowerCase()}|${z.state}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    areas.push({ zip: z.zip, city: z.city, state: z.state });
+  }
+  return areas.sort((a, b) => a.city.localeCompare(b.city, "en") || a.state.localeCompare(b.state));
+}
+
 export { countiesForState, countyDisplayName, areaCodesForState };

@@ -1,10 +1,19 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { CategoryPicker } from "@/components/search/CategoryPicker";
 import { zipRadiusCriteriaSchema, type ZipRadiusCriteria } from "@/lib/search-criteria";
+import { listAreas } from "@/lib/geo.functions";
 
 export function ZipRadiusForm({
   busy,
@@ -18,6 +27,8 @@ export function ZipRadiusForm({
   const [category, setCategory] = useState("");
   const [maxResults, setMaxResults] = useState(100);
   const [error, setError] = useState<string | null>(null);
+
+  const { data: areas } = useQuery({ queryKey: ["known-areas"], queryFn: () => listAreas() });
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -38,6 +49,24 @@ export function ZipRadiusForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {areas && areas.length > 0 ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="zip-known-area">Choose a known area (optional)</Label>
+          <Select value="" onValueChange={(value) => setZip(value)}>
+            <SelectTrigger id="zip-known-area">
+              <SelectValue placeholder="Or type a ZIP code below" />
+            </SelectTrigger>
+            <SelectContent>
+              {areas.map((area) => (
+                <SelectItem key={area.zip} value={area.zip}>
+                  {area.city}, {area.state}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="zip">ZIP code</Label>

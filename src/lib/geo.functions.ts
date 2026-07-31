@@ -19,6 +19,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import {
   isKnownZip,
+  listKnownAreas,
   zipToEntry,
   zipsForAreaCodeCities,
   zipsForCounty,
@@ -82,6 +83,11 @@ export const listZipsForAreaCode = createServerFn({ method: "GET" })
       zips: zipsForAreaCodeCities(data.areaCode, info.cities).map((z) => z.zip),
     };
   });
+
+/** Known city/state areas for the "choose a known area" ZIP form shortcut. */
+export const listAreas = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => listKnownAreas());
 
 /** Whether the bundled ZIP data covers a code at all — used to warn the user. */
 export const checkZipCoverage = createServerFn({ method: "GET" })
