@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
@@ -6,9 +7,11 @@ import { EmptyState } from "@/components/EmptyState";
 import { LoadingBlock } from "@/components/LoadingBlock";
 import { QualifiedBadge, WebsiteStatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { listLeadsForSearch } from "@/lib/leads.functions";
 import { isSafeExternalUrl } from "@/lib/url";
-import type { WebsiteStatus } from "@/lib/domain";
+import { QUALIFYING_WEBSITE_STATUSES, type WebsiteStatus } from "@/lib/domain";
 
 type LeadRow = {
   id: string;
@@ -31,6 +34,8 @@ type LeadRow = {
  * filterable table with bulk actions lives on the Saved Leads page (Phase 6).
  */
 export function SearchResultsList({ searchId }: { searchId: string }) {
+  const [onlyNoWebsiteWithEmail, setOnlyNoWebsiteWithEmail] = useState(false);
+
   const { data, isLoading } = useQuery({
     queryKey: ["search-results", searchId],
     queryFn: () => listLeadsForSearch({ data: { searchId } }),
@@ -38,87 +43,126 @@ export function SearchResultsList({ searchId }: { searchId: string }) {
     refetchInterval: 3000,
   });
 
-  const leads = (data ?? []) as LeadRow[];
+  const allLeads = useMemo(() => (data ?? []) as LeadRow[], [data]);
+  const leads = useMemo(() => {
+    if (!onlyNoWebsiteWithEmail) return allLeads;
+    return allLeads.filter(
+      (lead) =>
+        QUALIFYING_WEBSITE_STATUSES.includes(
+          lead.website_status as (typeof QUALIFYING_WEBSITE_STATUSES)[number],
+        ) && Boolean(lead.email),
+    );
+  }, [allLeads, onlyNoWebsiteWithEmail]);
 
-  if (isLoading && leads.length === 0) return <LoadingBlock rows={3} label="Loading results" />;
-  if (leads.length === 0) {
+  if (isLoading && allLeads.length === 0) return <LoadingBlock rows={3} label="Loading results" />;
+
+  const filterToggle =
+    allLeads.length > 0 ? (
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="only-no-website-with-email"
+          checked={onlyNoWebsiteWithEmail}
+          onCheckedChange={(checked) => setOnlyNoWebsiteWithEmail(checked === true)}
+        />
+        <Label htmlFor="only-no-website-with-email" className="text-sm font-normal">
+          Only show leads with no website and an email found
+        </Label>
+      </div>
+    ) : null;
+
+  if (allLeads.length === 0) {
     return (
       <EmptyState title="No leads yet" description="Results will appear here as the search runs." />
     );
   }
 
+  if (leads.length === 0) {
+    return (
+      <div className="space-y-3">
+        {filterToggle}
+        <EmptyState
+          title="No leads match this filter"
+          description="None of this search's results have both no website and a found email yet."
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="table-scroll rounded-lg border">
-      <table className="w-full text-sm">
-        <caption className="sr-only">Leads found by this search</caption>
-        <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-          <tr>
-            <th scope="col" className="px-3 py-2 font-medium">
-              Business
-            </th>
-            <th scope="col" className="px-3 py-2 font-medium">
-              Location
-            </th>
-            <th scope="col" className="px-3 py-2 font-medium">
-              Facebook
-            </th>
-            <th scope="col" className="px-3 py-2 font-medium">
-              Website status
-            </th>
-            <th scope="col" className="px-3 py-2 font-medium">
-              Confidence
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {leads.map((lead) => (
-            <tr key={lead.id}>
-              <td className="px-3 py-2">
-                <div className="font-medium">{lead.business_name}</div>
-                <div className="text-xs text-muted-foreground">{lead.category}</div>
-              </td>
-              <td className="px-3 py-2 text-muted-foreground">
-                {lead.city}, {lead.state} {lead.zip}
-              </td>
-              <td className="px-3 py-2">
-                {lead.facebook_url && isSafeExternalUrl(lead.facebook_url) ? (
-                  <a
-                    href={lead.facebook_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-primary hover:underline"
-                  >
-                    Page <ExternalLink className="size-3" aria-hidden="true" />
-                  </a>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-                {lead.email ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="ml-1 size-6"
-                    aria-label="Copy email"
-                    onClick={() => {
-                      navigator.clipboard.writeText(lead.email!);
-                      toast.success("Email copied");
-                    }}
-                  >
-                    <Copy className="size-3" aria-hidden="true" />
-                  </Button>
-                ) : null}
-              </td>
-              <td className="px-3 py-2">
-                <div className="flex items-center gap-1.5">
-                  <WebsiteStatusBadge status={lead.website_status} />
-                  <QualifiedBadge qualified={lead.qualified} />
-                </div>
-              </td>
-              <td className="px-3 py-2 tabular-nums">{lead.confidence_score}</td>
+    <div className="space-y-3">
+      {filterToggle}
+      <div className="table-scroll rounded-lg border">
+        <table className="w-full text-sm">
+          <caption className="sr-only">Leads found by this search</caption>
+          <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th scope="col" className="px-3 py-2 font-medium">
+                Business
+              </th>
+              <th scope="col" className="px-3 py-2 font-medium">
+                Location
+              </th>
+              <th scope="col" className="px-3 py-2 font-medium">
+                Facebook
+              </th>
+              <th scope="col" className="px-3 py-2 font-medium">
+                Website status
+              </th>
+              <th scope="col" className="px-3 py-2 font-medium">
+                Confidence
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y">
+            {leads.map((lead) => (
+              <tr key={lead.id}>
+                <td className="px-3 py-2">
+                  <div className="font-medium">{lead.business_name}</div>
+                  <div className="text-xs text-muted-foreground">{lead.category}</div>
+                </td>
+                <td className="px-3 py-2 text-muted-foreground">
+                  {lead.city}, {lead.state} {lead.zip}
+                </td>
+                <td className="px-3 py-2">
+                  {lead.facebook_url && isSafeExternalUrl(lead.facebook_url) ? (
+                    <a
+                      href={lead.facebook_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-primary hover:underline"
+                    >
+                      Page <ExternalLink className="size-3" aria-hidden="true" />
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                  {lead.email ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-1 size-6"
+                      aria-label="Copy email"
+                      onClick={() => {
+                        navigator.clipboard.writeText(lead.email!);
+                        toast.success("Email copied");
+                      }}
+                    >
+                      <Copy className="size-3" aria-hidden="true" />
+                    </Button>
+                  ) : null}
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <WebsiteStatusBadge status={lead.website_status} />
+                    <QualifiedBadge qualified={lead.qualified} />
+                  </div>
+                </td>
+                <td className="px-3 py-2 tabular-nums">{lead.confidence_score}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
