@@ -1,15 +1,19 @@
 /**
- * Brave Search API — a general web-search lookup used as a secondary email
- * source for businesses Google Places couldn't find a website for.
+ * Brave Search API — a general web-search lookup used as a secondary source
+ * for two things Google Places can't tell us about a business with no
+ * independent website: whether it has a Facebook page, and a published
+ * email address.
  *
  * This is deliberately NOT a `SearchProvider`. Brave has no structured
  * business directory (no radius search, no place records), so it can never
  * serve `searchBusinesses` — see brave.provider.stub.ts for that (still
  * unimplemented) full-provider shape. What Brave *can* do is what
- * google-places.provider.server.ts's `findPublicEmail` needs for a
- * no-website business: search the open web for the business by name and
- * location, then scan whatever public pages turn up (directories, local
- * listings, mentions) for a literally published email address.
+ * google-places.provider.server.ts's `findFacebookPage`/`findPublicEmail`
+ * need for a no-website business: search the open web for the business by
+ * name and location, then read whatever public results come back —
+ * directories, listings, mentions — for a literal Facebook URL or email
+ * address. Facebook itself is never fetched or scraped, only whatever Brave
+ * already indexed about it (see COMPLIANCE.md).
  *
  * Same compliance rule as everywhere else in this folder: never construct or
  * guess an address. Every email this can return came from parsed page
@@ -22,6 +26,8 @@
 
 import { fetchWithBackoff } from "@/lib/providers/http";
 import { extractEmailFromHtml } from "@/lib/providers/page-probe.server";
+import { isFacebookWebsiteUri } from "@/lib/providers/facebook-url";
+import { normalizeFacebookUrl } from "@/lib/dedupe";
 import { normalizeUrl } from "@/lib/url";
 
 const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
@@ -121,6 +127,37 @@ export async function findEmailViaWebSearch(business: {
   for (const result of results.slice(0, MAX_RESULTS_TO_PROBE)) {
     const fromPage = await fetchAndExtractEmail(result.url);
     if (fromPage) return fromPage;
+  }
+
+  return null;
+}
+
+/**
+ * Search the web for a business with no independent website and check
+ * whether a Facebook page turns up in the results — the URL Brave already
+ * indexed, never fetched or scraped from Facebook itself (that boundary is
+ * absolute — see COMPLIANCE.md). Rejects Facebook's own utility paths
+ * (login, marketplace, search, ...) via the same `normalizeFacebookUrl`
+ * dedupe.ts uses, so a stray facebook.com/login result can't be mistaken for
+ * a business page.
+ *
+ * Returns `null` when Brave isn't configured or no result's URL is a
+ * plausible Facebook business page — never a guess.
+ */
+export async function findFacebookPageViaWebSearch(business: {
+  name: string;
+  city: string;
+  state: string;
+}): Promise<string | null> {
+  if (!isBraveSearchConfigured()) return null;
+
+  const query = `"${business.name}" ${business.city}, ${business.state} facebook`;
+  const results = await braveWebSearch(query);
+
+  for (const result of results.slice(0, MAX_RESULTS_TO_PROBE)) {
+    if (!isFacebookWebsiteUri(result.url)) continue;
+    const normalized = normalizeFacebookUrl(result.url);
+    if (normalized) return result.url;
   }
 
   return null;

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   braveWebSearch,
   findEmailViaWebSearch,
+  findFacebookPageViaWebSearch,
   isBraveSearchConfigured,
 } from "./brave-search.server";
 
@@ -202,5 +203,94 @@ describe("findEmailViaWebSearch", () => {
     // No results at all — a naive implementation might be tempted to build
     // "joesplumbing@joesplumbing.com" from the business name. This must not happen.
     expect(await findEmailViaWebSearch(business)).toBeNull();
+  });
+});
+
+describe("findFacebookPageViaWebSearch", () => {
+  const originalKey = process.env.BRAVE_SEARCH_API_KEY;
+  const business = { name: "Joe's Plumbing", city: "Knoxville", state: "TN" };
+
+  afterEach(() => {
+    if (originalKey === undefined) delete process.env.BRAVE_SEARCH_API_KEY;
+    else process.env.BRAVE_SEARCH_API_KEY = originalKey;
+    vi.unstubAllGlobals();
+  });
+
+  it("returns null with no key configured", async () => {
+    delete process.env.BRAVE_SEARCH_API_KEY;
+    expect(await findFacebookPageViaWebSearch(business)).toBeNull();
+  });
+
+  it("finds a Facebook page URL from the search results, without fetching it", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "test-key";
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        web: {
+          results: [
+            {
+              title: "Joe's Plumbing | Facebook",
+              url: "https://www.facebook.com/joesplumbingknox",
+              description: "Joe's Plumbing, Knoxville, TN. 500 likes.",
+            },
+          ],
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const url = await findFacebookPageViaWebSearch(business);
+    expect(url).toBe("https://www.facebook.com/joesplumbingknox");
+    // Only the search call — Facebook itself is never fetched.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a Facebook utility path (login, marketplace, ...) as not a real business page", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "test-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          web: {
+            results: [
+              {
+                title: "Log into Facebook",
+                url: "https://www.facebook.com/login/",
+                description: "Log in to Facebook to start sharing.",
+              },
+            ],
+          },
+        }),
+      ),
+    );
+
+    expect(await findFacebookPageViaWebSearch(business)).toBeNull();
+  });
+
+  it("ignores non-Facebook results entirely", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "test-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          web: {
+            results: [
+              {
+                title: "Joe's Plumbing - Yelp",
+                url: "https://yelp.com/biz/joes-plumbing",
+                description: "5-star rated plumber.",
+              },
+            ],
+          },
+        }),
+      ),
+    );
+
+    expect(await findFacebookPageViaWebSearch(business)).toBeNull();
+  });
+
+  it("returns null when nothing is configured or nothing turns up", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "test-key";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ web: { results: [] } })));
+    expect(await findFacebookPageViaWebSearch(business)).toBeNull();
   });
 });

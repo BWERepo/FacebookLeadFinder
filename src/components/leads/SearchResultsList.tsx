@@ -103,7 +103,7 @@ export function SearchResultsList({ searchId }: { searchId: string }) {
                 Location
               </th>
               <th scope="col" className="px-3 py-2 font-medium">
-                Facebook
+                Page
               </th>
               <th scope="col" className="px-3 py-2 font-medium">
                 Website status

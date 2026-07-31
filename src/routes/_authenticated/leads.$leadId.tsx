@@ -193,7 +193,7 @@ function LeadDetailsPage() {
               <Field label="Phone" value={lead.phone || "—"} />
               <Field label="Email" value={lead.email ?? "Not Found"} />
               <Field
-                label="Facebook"
+                label="Page"
                 value={
                   lead.facebook_url && isSafeExternalUrl(lead.facebook_url) ? (
                     <a

@@ -26,8 +26,12 @@
  */
 
 import { fetchWithBackoff } from "@/lib/providers/http";
-import { findEmailViaWebSearch } from "@/lib/providers/brave-search.server";
+import {
+  findEmailViaWebSearch,
+  findFacebookPageViaWebSearch,
+} from "@/lib/providers/brave-search.server";
 import { probePage } from "@/lib/providers/page-probe.server";
+import { isFacebookWebsiteUri } from "@/lib/providers/facebook-url";
 import { ProviderAuthError, ProviderNotConfigured, type SearchProvider } from "./types";
 import type {
   EmailResult,
@@ -121,15 +125,7 @@ export function mapPlaceToRawBusiness(place: Place, categoryHint: string): RawBu
   };
 }
 
-export function isFacebookWebsiteUri(uri: string | null): boolean {
-  if (!uri) return false;
-  try {
-    const host = new URL(uri).hostname.replace(/^www\./, "");
-    return host === "facebook.com" || host.endsWith(".facebook.com");
-  } catch {
-    return false;
-  }
-}
+export { isFacebookWebsiteUri };
 
 /** The text query sent to `:searchText` for the two criteria modes with no real center point. */
 export function textQueryFor(criteria: SearchCriteria): string {
@@ -248,10 +244,27 @@ export function createGooglePlacesProvider(): SearchProvider {
     },
 
     async findFacebookPage(business): Promise<FacebookPageResult> {
-      // Places has no separate "find the Facebook page" call — the only signal
-      // it can offer is its own websiteUri pointing at facebook.com.
+      // Places' own websiteUri pointing at facebook.com is the strongest
+      // signal — an explicit claim from the business's own listing.
       if (isFacebookWebsiteUri(business.websiteUri)) {
         return { url: business.websiteUri, source: "provider", profileListsWebsite: null };
+      }
+      // Places has no dedicated "does this business have a Facebook page"
+      // field, and if it lists a real independent website, this business
+      // isn't this app's target lead type anyway. But when Places has no
+      // website on file at all, that's exactly the case worth checking
+      // further — fall back to a Brave web search for a facebook.com URL
+      // in the public results (never fetched, same as the email fallback;
+      // never Facebook itself). Without this, a business with no website
+      // could never be confirmed as having a Facebook page at all, and so
+      // could never qualify — Places alone has no way to tell us.
+      if (!business.websiteUri) {
+        const url = await findFacebookPageViaWebSearch({
+          name: business.name,
+          city: business.city,
+          state: business.state,
+        });
+        if (url) return { url, source: "search_name", profileListsWebsite: null };
       }
       return { url: null, source: "provider", profileListsWebsite: null };
     },

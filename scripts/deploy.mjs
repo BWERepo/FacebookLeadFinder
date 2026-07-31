@@ -61,9 +61,16 @@ function run(cmd, args, { cwd = root, env: extraEnv = {} } = {}) {
   });
 }
 
+const deployedAt = new Date().toISOString();
+
 console.log(`\n=> Building v${version} for ${target}\n`);
 run("npm", ["run", "build"], {
-  env: { VITE_DEPLOY_APP_VERSION: version, VITE_DEPLOY_ENV: target, VITE_BASE_PATH: env.basePath },
+  env: {
+    VITE_DEPLOY_APP_VERSION: version,
+    VITE_DEPLOY_ENV: target,
+    VITE_BASE_PATH: env.basePath,
+    VITE_DEPLOY_TIMESTAMP: deployedAt,
+  },
 });
 
 // Vite's `base` only prefixes the *URLs* referenced in HTML/JS — it doesn't

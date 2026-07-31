@@ -72,11 +72,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Facebook Lead Finder — Business Web Express" },
+      { title: "Lead Finder — Business Web Express" },
       {
         name: "description",
         content:
-          "Find local businesses that have a Facebook business page but no website of their own.",
+          "Find local businesses that have a linked business page but no website of their own.",
       },
       // This is an internal prospecting tool operating on third-party business
       // data. It should never be indexed.

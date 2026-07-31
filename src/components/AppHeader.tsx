@@ -16,6 +16,18 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
 
+// Only set by scripts/deploy.mjs — undefined for a local `npm run dev`/`vite build`,
+// so the badge below simply doesn't render rather than showing a blank version.
+const DEPLOY_VERSION = import.meta.env.VITE_DEPLOY_APP_VERSION as string | undefined;
+const DEPLOY_TIMESTAMP = import.meta.env.VITE_DEPLOY_TIMESTAMP as string | undefined;
+const DEPLOY_LABEL =
+  DEPLOY_VERSION && DEPLOY_TIMESTAMP
+    ? `v${DEPLOY_VERSION} · ${new Date(DEPLOY_TIMESTAMP).toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })}`
+    : null;
+
 export function AppHeader() {
   const navigate = useNavigate();
   const [email, setEmail] = useState<string | null>(null);
@@ -44,9 +56,15 @@ export function AppHeader() {
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="mr-2 h-4" />
       <span className="text-sm font-semibold tracking-tight">Business Web Express</span>
-      <span className="hidden text-sm text-muted-foreground sm:inline">/ Facebook Lead Finder</span>
+      <span className="hidden text-sm text-muted-foreground sm:inline">/ Lead Finder</span>
 
-      <div className="ml-auto">
+      {DEPLOY_LABEL ? (
+        <span className="ml-auto hidden text-xs text-muted-foreground md:inline">
+          {DEPLOY_LABEL}
+        </span>
+      ) : null}
+
+      <div className={DEPLOY_LABEL ? "ml-3" : "ml-auto"}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="Account menu">

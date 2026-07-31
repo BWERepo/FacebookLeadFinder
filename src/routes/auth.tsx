@@ -84,7 +84,7 @@ function AuthPage() {
           <div className="flex size-11 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Radar className="size-5" aria-hidden="true" />
           </div>
-          <h1 className="mt-3 text-lg font-semibold">Facebook Lead Finder</h1>
+          <h1 className="mt-3 text-lg font-semibold">Lead Finder</h1>
           <p className="text-sm text-muted-foreground">Business Web Express</p>
         </div>
 

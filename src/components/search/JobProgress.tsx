@@ -110,7 +110,7 @@ export function JobProgress({
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
             <Stat label="Discovered" value={progress.candidatesDiscovered} />
             <Stat label="Sites searched" value={progress.candidatesProcessed} />
-            <Stat label="Facebook pages" value={progress.facebookPagesFound} />
+            <Stat label="Pages found" value={progress.facebookPagesFound} />
             <Stat label="Websites checked" value={progress.websitesChecked} />
             <Stat label="Qualified" value={progress.qualifiedFound} emphasize />
             {elapsed !== null ? <Stat label="Elapsed" value={elapsed} /> : null}

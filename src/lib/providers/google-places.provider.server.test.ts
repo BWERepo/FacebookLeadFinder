@@ -292,4 +292,94 @@ describe("createGooglePlacesProvider", () => {
       });
     });
   });
+
+  describe("findFacebookPage", () => {
+    const originalBraveKey = process.env.BRAVE_SEARCH_API_KEY;
+    const noWebsiteBusiness = mapPlaceToRawBusiness(
+      { ...SAMPLE_PLACE, websiteUri: undefined },
+      "Restaurants",
+    );
+
+    afterEach(() => {
+      if (originalBraveKey === undefined) delete process.env.BRAVE_SEARCH_API_KEY;
+      else process.env.BRAVE_SEARCH_API_KEY = originalBraveKey;
+    });
+
+    it("trusts Places' own websiteUri when it already points at facebook.com, without calling Brave", async () => {
+      process.env.GOOGLE_PLACES_API_KEY = "test-key";
+      process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const provider = createGooglePlacesProvider();
+      const business = mapPlaceToRawBusiness(
+        { ...SAMPLE_PLACE, websiteUri: "https://facebook.com/RosalitasTaqueria" },
+        "Restaurants",
+      );
+      const result = await provider.findFacebookPage(business);
+
+      expect(result).toEqual({
+        url: "https://facebook.com/RosalitasTaqueria",
+        source: "provider",
+        profileListsWebsite: null,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("never checks Brave when the business already has a real independent website", async () => {
+      process.env.GOOGLE_PLACES_API_KEY = "test-key";
+      process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const provider = createGooglePlacesProvider();
+      const business = mapPlaceToRawBusiness(SAMPLE_PLACE, "Restaurants"); // real websiteUri
+      const result = await provider.findFacebookPage(business);
+
+      expect(result).toEqual({ url: null, source: "provider", profileListsWebsite: null });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("falls back to a Brave web search for a no-website business and reports a confirmed Facebook page", async () => {
+      process.env.GOOGLE_PLACES_API_KEY = "test-key";
+      process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              web: {
+                results: [
+                  {
+                    title: "Rosalita's Taqueria | Facebook",
+                    url: "https://www.facebook.com/rosalitastaqueria",
+                    description: "Rosalita's Taqueria, Knoxville, TN.",
+                  },
+                ],
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        ),
+      );
+
+      const provider = createGooglePlacesProvider();
+      const result = await provider.findFacebookPage(noWebsiteBusiness);
+      expect(result).toEqual({
+        url: "https://www.facebook.com/rosalitastaqueria",
+        source: "search_name",
+        profileListsWebsite: null,
+      });
+    });
+
+    it("reports no confirmed page when Brave isn't configured, for a no-website business", async () => {
+      process.env.GOOGLE_PLACES_API_KEY = "test-key";
+      delete process.env.BRAVE_SEARCH_API_KEY;
+      vi.stubGlobal("fetch", vi.fn());
+
+      const provider = createGooglePlacesProvider();
+      const result = await provider.findFacebookPage(noWebsiteBusiness);
+      expect(result).toEqual({ url: null, source: "provider", profileListsWebsite: null });
+    });
+  });
 });

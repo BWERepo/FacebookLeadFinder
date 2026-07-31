@@ -81,7 +81,7 @@ function FindLeadsPage() {
     <>
       <PageHeader
         title="Find Leads"
-        description="Search by ZIP code, telephone area code, or state and county. Results are checked for a Facebook page and an independent website."
+        description="Search by ZIP code, telephone area code, or state and county. Results are checked for a linked business page and an independent website."
         actions={
           searchId ? (
             <DropdownMenu>
