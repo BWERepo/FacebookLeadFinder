@@ -14,7 +14,6 @@
     "typecheck": "tsc --noEmit",
     "deploy": "node scripts/deploy.mjs",
     "geo:build": "node scripts/build-geo-data.mjs",
-    "seed": "node scripts/seed-demo.mjs",
     "check:secrets": "bash scripts/check-secret-parity.sh"
   },
   "dependencies": {

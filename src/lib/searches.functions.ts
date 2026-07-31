@@ -44,7 +44,7 @@ import {
   type DuplicateRuleSettings,
 } from "@/lib/dedupe";
 import type { DomainRule } from "@/lib/excluded-domains";
-import { emailDomain, isFreeEmailDomain } from "@/lib/url";
+import { emailDomain, isFreeEmailDomain, normalizeUrl } from "@/lib/url";
 import { zipsForCounty, zipsForAreaCodeCities } from "@/data/geo";
 import { areaCodeInfo } from "@/data/area-codes";
 
@@ -528,6 +528,18 @@ async function processCandidate(
       enrichedCandidates.push(candidate);
       continue;
     }
+
+    // A real provider's "website" field is ultimately business-owner-supplied
+    // data (anyone can set their Google Business Profile's website to an
+    // internal or loopback address), and verifyWebsite performs a real
+    // outbound fetch from inside the Worker — an SSRF vector if that URL is
+    // never validated. normalizeUrl rejects non-http(s) schemes, credentials,
+    // and localhost/loopback/non-domain hosts before any fetch is attempted.
+    if (!normalizeUrl(candidate.url)) {
+      enrichedCandidates.push({ ...candidate, reachable: false, pageTitle: null, pageText: null });
+      continue;
+    }
+
     const verified = await provider.verifyWebsite(candidate.url);
     counters.providerCalls += 1;
     enrichedCandidates.push({

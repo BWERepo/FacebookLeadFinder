@@ -78,6 +78,27 @@ const INVALID_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
 const HOST_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
 /**
+ * A dotted-decimal IPv4 literal, e.g. "169.254.169.254" — every label a
+ * number, which `HOST_PATTERN` alone does not reject (each numeric octet is a
+ * syntactically valid label). Any IP literal is rejected, not just the
+ * loopback ones in `INVALID_HOSTS`: a business's own "website" field is
+ * ultimately attacker-influenceable data (see verifyWebsite's callers), and
+ * this is what stops it from pointing this app's outbound fetch at an
+ * internal service or a cloud metadata endpoint (169.254.169.254) instead of
+ * a real website.
+ */
+const IPV4_LITERAL_PATTERN = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+function isIpLiteralHost(host: string): boolean {
+  if (IPV4_LITERAL_PATTERN.test(host)) return true;
+  // Bracketed IPv6 literals ("[::1]") are stripped of their brackets by
+  // URL.hostname, so a bare "::" or hex-and-colon shape here is IPv6, never a
+  // domain name (domains never contain a colon).
+  if (host.includes(":")) return true;
+  return false;
+}
+
+/**
  * True if the string contains any C0 control character, space, or DEL.
  *
  * Browsers strip \t, \n and \r from a URL *before* parsing it, so
@@ -129,7 +150,8 @@ export function normalizeUrl(raw: string | null | undefined): NormalizedUrl | nu
     .replace(/^www\./, "")
     .replace(/\.$/, "");
   if (host === "" || INVALID_HOSTS.has(host)) return null;
-  // Must look like a real domain. Rejects "https://foo" and IP literals.
+  if (isIpLiteralHost(host)) return null;
+  // Must look like a real domain. Rejects "https://foo".
   if (!HOST_PATTERN.test(host)) return null;
 
   const scheme = parsed.protocol === "http:" ? "http" : "https";
@@ -189,7 +211,13 @@ export function isSafeExternalUrl(raw: string | null | undefined): boolean {
 
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   if (parsed.username || parsed.password) return false;
-  return parsed.hostname !== "";
+  if (parsed.hostname === "") return false;
+  // Also reject IP literals here, not just for the outbound-fetch path in
+  // normalizeUrl: a lead's "website" is third-party data rendered as a
+  // clickable link/hyperlink cell, and an internal address dressed up as a
+  // business website is a plausible way to get someone to click it from
+  // inside a trusted app.
+  return !isIpLiteralHost(parsed.hostname.toLowerCase());
 }
 
 /** The domain part of an email address, lowercased. `null` if unparseable. */

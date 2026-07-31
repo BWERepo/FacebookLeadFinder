@@ -83,6 +83,17 @@ describe("normalizeUrl", () => {
     expect(normalizeUrl("https://a b.com")).toBeNull();
   });
 
+  it("rejects any IP literal, not just the hardcoded loopback ones — an SSRF guard", () => {
+    // Not in INVALID_HOSTS's small hardcoded list, but still an IP literal
+    // rather than a domain — includes the cloud metadata endpoint address,
+    // which a business's own "website" field could plausibly be set to.
+    expect(normalizeUrl("http://169.254.169.254/latest/meta-data/")).toBeNull();
+    expect(normalizeUrl("http://10.0.0.5/internal")).toBeNull();
+    expect(normalizeUrl("http://192.168.1.1")).toBeNull();
+    expect(normalizeUrl("http://[::1]/admin")).toBeNull();
+    expect(normalizeUrl("http://[fe80::1]/")).toBeNull();
+  });
+
   it("rejects empty and non-string input", () => {
     expect(normalizeUrl("")).toBeNull();
     expect(normalizeUrl("   ")).toBeNull();

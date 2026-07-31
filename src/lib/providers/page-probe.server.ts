@@ -10,6 +10,7 @@
 
 import { fetchWithBackoff } from "@/lib/providers/http";
 import type { ProviderName, VerifyResult } from "@/lib/providers/types";
+import { normalizeUrl } from "@/lib/url";
 
 /** Page text is truncated to this length before it's stored or scored. */
 export const MAX_PAGE_TEXT_CHARS = 20_000;
@@ -50,6 +51,12 @@ function decodeHtmlEntities(text: string): string {
 }
 
 export async function probePage(provider: ProviderName, url: string): Promise<VerifyResult> {
+  // Defense in depth: searches.functions.ts already validates a candidate URL
+  // with normalizeUrl before calling this, but this is the actual outbound
+  // fetch boundary — an SSRF guard here holds even if a future caller forgets
+  // to check first.
+  if (!normalizeUrl(url)) return { reachable: false, pageTitle: null, pageText: null };
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 

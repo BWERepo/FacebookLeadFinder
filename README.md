@@ -4,8 +4,10 @@ An internal prospecting tool for **Business Web Express**. It finds local
 businesses that run a Facebook business page but have **no website of their
 own** — the businesses most likely to want one.
 
-> **Status:** under active construction. See [Implementation phases](#implementation-phases)
-> for what is built and what is not.
+> **Status:** feature-complete through Phase 12's hardening and documentation
+> work; production deploy is the one remaining step. See
+> [Implementation phases](#implementation-phases) below, and
+> [COMPLIANCE.md](./COMPLIANCE.md) for the compliance and security posture.
 
 ---
 
@@ -152,7 +154,7 @@ build, because Nitro reads exactly one wrangler file.
 | 9     | CSV and XLSX export                                              | Done   |
 | 10    | CSV/XLSX import wizard                                           | Done   |
 | 11    | Settings and the Google Places adapter                           | Done   |
-| 12    | Hardening, documentation, production deploy                      |        |
+| 12    | Hardening, documentation, production deploy                      | Hardening/docs done; production deploy pending |
 
 The application is designed to run **with no paid APIs at all**: the mock
 provider plus seeded demo data exercise the entire workflow end to end.

@@ -94,4 +94,38 @@ describe("probePage", () => {
     const result = await probePage("google_places", "https://example.com/no-title");
     expect(result.pageTitle).toBeNull();
   });
+
+  describe("SSRF guard", () => {
+    it("never fetches a loopback URL, even if a provider hands one to it", async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await probePage("google_places", "http://127.0.0.1:8080/admin");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result.reachable).toBe(false);
+    });
+
+    it("never fetches localhost", async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await probePage("google_places", "http://localhost/internal");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result.reachable).toBe(false);
+    });
+
+    it("never fetches a non-http(s) scheme", async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await probePage("google_places", "file:///etc/passwd");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result.reachable).toBe(false);
+    });
+
+    it("never fetches a bare IP literal (a common SSRF/metadata-endpoint shape)", async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const result = await probePage("google_places", "http://169.254.169.254/latest/meta-data/");
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result.reachable).toBe(false);
+    });
+  });
 });

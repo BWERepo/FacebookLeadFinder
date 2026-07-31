@@ -5,8 +5,8 @@
 # staging only. Exits non-zero if the sets differ.
 set -euo pipefail
 
-STAGING_WORKER="businesswebexpress-staging"
-PROD_WORKER="businesswebexpress"
+STAGING_WORKER="facebookleadfinder-staging"
+PROD_WORKER="facebookleadfinder"
 
 staging_secrets=$(npx wrangler secret list --name "$STAGING_WORKER" 2>/dev/null | grep -o '"name": *"[^"]*"' | sed 's/"name": *"//; s/"$//' | sort)
 prod_secrets=$(npx wrangler secret list --name "$PROD_WORKER" 2>/dev/null | grep -o '"name": *"[^"]*"' | sed 's/"name": *"//; s/"$//' | sort)
