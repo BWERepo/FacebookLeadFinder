@@ -32,6 +32,7 @@ import type { RawBusiness } from "@/lib/providers/types";
 import { classifyWebsite, type CandidateUrl } from "@/lib/verification";
 import { scoreConfidence } from "@/lib/confidence";
 import {
+  DEFAULT_DUPLICATE_RULES,
   findDuplicate,
   mergePatch,
   normalizeAddress,
@@ -40,7 +41,9 @@ import {
   normalizeFacebookUrl,
   normalizePhone,
   type DedupeCandidate,
+  type DuplicateRuleSettings,
 } from "@/lib/dedupe";
+import type { DomainRule } from "@/lib/excluded-domains";
 import { emailDomain, isFreeEmailDomain } from "@/lib/url";
 import { zipsForCounty, zipsForAreaCodeCities } from "@/data/geo";
 import { areaCodeInfo } from "@/data/area-codes";
@@ -375,6 +378,36 @@ async function runDiscoverChunk(
 
 type LeadRecordForDedupe = DedupeCandidate & { id: string };
 
+/** The subset of Settings that actually change verify-phase behavior. Fetched once per chunk. */
+type VerifySettings = {
+  countMarketplaceAsWebsite: boolean;
+  countGoogleBusinessAsWebsite: boolean;
+  confidenceThreshold: number;
+  duplicateRules: DuplicateRuleSettings;
+  userDomainRules: DomainRule[];
+};
+
+async function loadVerifySettings(supabase: any, userId: string): Promise<VerifySettings> {
+  const [{ data: settingsRow }, { data: domainRows }] = await Promise.all([
+    supabase
+      .from("user_settings")
+      .select(
+        "count_marketplace_as_website, count_google_business_as_website, confidence_threshold, duplicate_rules",
+      )
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase.from("excluded_domains").select("domain, kind, enabled"),
+  ]);
+
+  return {
+    countMarketplaceAsWebsite: settingsRow?.count_marketplace_as_website ?? false,
+    countGoogleBusinessAsWebsite: settingsRow?.count_google_business_as_website ?? false,
+    confidenceThreshold: settingsRow?.confidence_threshold ?? 60,
+    duplicateRules: settingsRow?.duplicate_rules ?? DEFAULT_DUPLICATE_RULES,
+    userDomainRules: (domainRows ?? []) as DomainRule[],
+  };
+}
+
 async function runVerifyChunk(
   supabase: any,
   job: any,
@@ -382,6 +415,7 @@ async function runVerifyChunk(
   deadline: number,
 ): Promise<Record<string, unknown>> {
   const chunkSize = DEFAULT_CHUNK_SIZE;
+  const verifySettings = await loadVerifySettings(supabase, job.created_by);
 
   const { data: queued, error: queueError } = await supabase
     .from("search_results")
@@ -408,7 +442,7 @@ async function runVerifyChunk(
     if (Date.now() > deadline) break;
 
     try {
-      await processCandidate(supabase, job, result, provider, counters);
+      await processCandidate(supabase, job, result, provider, counters, verifySettings);
     } catch (err) {
       const attempts = (result.attempts as number) + 1;
       lastError = err instanceof Error ? err.message : String(err);
@@ -472,6 +506,7 @@ async function processCandidate(
     providerCalls: number;
     errorCount: number;
   },
+  verifySettings: VerifySettings,
 ): Promise<void> {
   const business = result.raw as RawBusiness;
 
@@ -525,8 +560,17 @@ async function processCandidate(
       byEmailDomain: true,
       bySocial: Boolean(fb.url),
     },
+    countMarketplaceAsWebsite: verifySettings.countMarketplaceAsWebsite,
+    countGoogleBusinessAsWebsite: verifySettings.countGoogleBusinessAsWebsite,
+    userDomainRules: verifySettings.userDomainRules,
   });
   const confidence = scoreConfidence(verification.signals, verification.status);
+  // A lead must also clear the user's confidence threshold to be presented as
+  // qualified — see user_settings' migration comment. classifyWebsite's own
+  // `qualified` is necessary (right website status + a confirmed Facebook
+  // page) but not sufficient on its own.
+  const qualified =
+    verification.qualified && confidence.score >= verifySettings.confidenceThreshold;
 
   if (fb.url) counters.facebookFound++;
   if (potentialCandidates.length > 0) counters.websitesChecked++;
@@ -545,7 +589,7 @@ async function processCandidate(
   };
 
   const existing = await findDuplicateCandidates(supabase, normalized);
-  const match = findDuplicate(normalized, existing);
+  const match = findDuplicate(normalized, existing, verifySettings.duplicateRules);
 
   if (match && match.certainty === "certain") {
     const patch = mergePatch(
@@ -576,7 +620,7 @@ async function processCandidate(
         duplicate_rule: match.rule,
         duplicate_certainty: match.certainty,
         website_status: verification.status,
-        qualified: verification.qualified,
+        qualified,
         confidence_score: confidence.score,
       })
       .eq("id", result.id);
@@ -610,7 +654,7 @@ async function processCandidate(
     normalized_facebook_url: normalized.normalized_facebook_url,
     website_status: verification.status,
     potential_website_url: verification.potentialWebsiteUrl,
-    qualified: verification.qualified,
+    qualified,
     confidence_score: confidence.score,
     confidence_band: confidence.band,
     confidence_breakdown: confidence.breakdown,
@@ -655,7 +699,7 @@ async function processCandidate(
     detail: { search_id: job.id },
   });
 
-  if (verification.qualified) counters.qualifiedFound++;
+  if (qualified) counters.qualifiedFound++;
   if (verification.status === "needs_manual_review") counters.needsReview++;
   counters.processed++;
 
@@ -666,7 +710,7 @@ async function processCandidate(
       lead_id: inserted.id,
       candidate_urls: enrichedCandidates,
       website_status: verification.status,
-      qualified: verification.qualified,
+      qualified,
       confidence_score: confidence.score,
     })
     .eq("id", result.id);

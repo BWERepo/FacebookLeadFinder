@@ -11,7 +11,7 @@
 
 import type { ProviderName, SearchProvider } from "./types";
 import { createMockProvider } from "./mock.provider";
-import { createGooglePlacesProvider } from "./google-places.provider";
+import { createGooglePlacesProvider } from "./google-places.provider.server";
 import { createBingProvider } from "./bing.provider.stub";
 import { createBraveProvider } from "./brave.provider.stub";
 import { createSerpApiProvider } from "./serpapi.provider.stub";
@@ -32,7 +32,7 @@ const FACTORIES: Record<ProviderName, () => SearchProvider> = {
 };
 
 const UNAVAILABLE_REASONS: Partial<Record<ProviderName, string>> = {
-  google_places: "Not yet implemented (arrives in Phase 11)",
+  google_places: "GOOGLE_PLACES_API_KEY is not set",
   bing: "Microsoft retired the Bing Web Search API in August 2025",
   brave: "Not yet implemented",
   serpapi: "Not yet implemented",

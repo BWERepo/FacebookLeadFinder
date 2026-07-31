@@ -151,7 +151,7 @@ build, because Nitro reads exactly one wrangler file.
 | 8     | Dashboard and charts                                             | Done   |
 | 9     | CSV and XLSX export                                              | Done   |
 | 10    | CSV/XLSX import wizard                                           | Done   |
-| 11    | Settings and the Google Places adapter                           |        |
+| 11    | Settings and the Google Places adapter                           | Done   |
 | 12    | Hardening, documentation, production deploy                      |        |
 
 The application is designed to run **with no paid APIs at all**: the mock
