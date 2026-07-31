@@ -42,6 +42,11 @@ const ENVIRONMENTS = {
   },
 };
 
+// staging bumps the patch digit (0.1.0 -> 0.1.1); production bumps minor and
+// resets patch to 0 (0.1.1 -> 0.2.0) — standard semver-ish convention, not
+// tied to what actually changed. Every deploy gets its own version number.
+const BUMP_LEVEL = { staging: "patch", production: "minor" };
+
 const target = process.argv[2] ?? "staging";
 const env = ENVIRONMENTS[target];
 if (!env) {
@@ -50,7 +55,18 @@ if (!env) {
 }
 
 const root = resolve(import.meta.dirname, "..");
-const version = JSON.parse(readFileSync(resolve(root, "version.json"), "utf8")).version;
+const versionFile = resolve(root, "version.json");
+
+function bumpVersion(current, level) {
+  const [major, minor, patch] = current.split(".").map(Number);
+  if (level === "minor") return `${major}.${minor + 1}.0`;
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+const previousVersion = JSON.parse(readFileSync(versionFile, "utf8")).version;
+const version = bumpVersion(previousVersion, BUMP_LEVEL[target]);
+writeFileSync(versionFile, JSON.stringify({ version }, null, 2) + "\n");
+console.log(`\n=> Bumped version ${previousVersion} -> ${version} (${BUMP_LEVEL[target]})\n`);
 
 function run(cmd, args, { cwd = root, env: extraEnv = {} } = {}) {
   execFileSync(cmd, args, {
@@ -104,3 +120,16 @@ console.log(`\n=> Patched generated wrangler.json: name="${config.name}"\n`);
 run("npx", ["wrangler", "deploy", "--config", "wrangler.json", "--name", env.name], {
   cwd: resolve(root, ".output/server"),
 });
+
+// Committed only after a successful deploy — a failed deploy shouldn't leave
+// the repo's version.json out ahead of what's actually live. version.json is
+// the only thing touched here; anything else pending stays exactly as the
+// caller left it.
+run("git", ["add", "version.json"]);
+run("git", [
+  "commit",
+  "-m",
+  `Bump version to ${version} for ${target} deploy\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`,
+]);
+run("git", ["push", "origin", "HEAD"]);
+console.log(`\n=> Committed and pushed version.json (v${version})\n`);
