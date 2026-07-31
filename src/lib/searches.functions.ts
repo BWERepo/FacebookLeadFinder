@@ -688,7 +688,12 @@ async function processCandidate(
   const existing = await findDuplicateCandidates(supabase, normalized);
   const match = findDuplicate(normalized, existing, verifySettings.duplicateRules);
 
-  if (match && match.certainty === "certain") {
+  // Any match at all — certain, probable, or possible — means this business
+  // is already a saved lead, so it's excluded here rather than written as a
+  // second row; the search keeps going past it rather than stopping, since
+  // `runVerifyChunk`'s target-met check only counts leads actually inserted
+  // for this job.
+  if (match) {
     const patch = mergePatch(
       match.lead as unknown as Record<string, unknown>,
       {
