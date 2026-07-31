@@ -17,8 +17,16 @@ const PRESET_LABELS = CATEGORY_PRESETS.filter((c) => c.slug !== OTHER_CATEGORY_S
   (c) => c.label,
 );
 
-/** Split the stored comma-joined value into the preset labels it contains and whatever's left over (the custom entry, if any). */
+/**
+ * Split the stored comma-joined value into the preset labels it contains and
+ * whatever's left over (the custom entry, if any). An untouched/empty value
+ * means "search everything" — shown as every preset checked by default,
+ * rather than none — so a user starts from "all categories" and narrows down,
+ * instead of starting from nothing and having to opt every category back in.
+ */
 function parseValue(value: string): { presets: Set<string>; custom: string } {
+  if (value.trim() === "") return { presets: new Set(PRESET_LABELS), custom: "" };
+
   const tokens = value
     .split(",")
     .map((t) => t.trim())
@@ -28,9 +36,11 @@ function parseValue(value: string): { presets: Set<string>; custom: string } {
   return { presets, custom: customTokens.join(", ") };
 }
 
-function serialize(presets: Set<string>, custom: string): string {
-  const orderedPresets = PRESET_LABELS.filter((label) => presets.has(label));
+/** Every preset checked and nothing custom is the same "no filter" meaning as an empty value — collapse back to it rather than emitting the full label list. */
+function toOutgoingValue(presets: Set<string>, custom: string): string {
   const trimmedCustom = custom.trim();
+  if (presets.size === PRESET_LABELS.length && !trimmedCustom) return "";
+  const orderedPresets = PRESET_LABELS.filter((label) => presets.has(label));
   return [...orderedPresets, ...(trimmedCustom ? [trimmedCustom] : [])].join(", ");
 }
 
@@ -53,8 +63,9 @@ export function CategoryPicker({
   const { presets: selectedPresets, custom } = parseValue(value);
   const [customMode, setCustomMode] = useState(custom !== "");
 
+  const allPresetsChecked = selectedPresets.size === PRESET_LABELS.length;
   const summary =
-    selectedPresets.size === 0 && !customMode
+    allPresetsChecked && !customMode
       ? "Any category"
       : selectedPresets.size + (customMode && custom ? 1 : 0) === 1
         ? (selectedPresets.values().next().value ?? custom)
@@ -64,7 +75,7 @@ export function CategoryPicker({
     const next = new Set(selectedPresets);
     if (checked) next.add(label);
     else next.delete(label);
-    onChange(serialize(next, customMode ? custom : ""));
+    onChange(toOutgoingValue(next, customMode ? custom : ""));
   };
 
   return (
@@ -100,7 +111,7 @@ export function CategoryPicker({
             onCheckedChange={(checked) => {
               const next = checked === true;
               setCustomMode(next);
-              onChange(serialize(selectedPresets, next ? custom : ""));
+              onChange(toOutgoingValue(selectedPresets, next ? custom : ""));
             }}
           >
             Other (custom)
@@ -111,7 +122,7 @@ export function CategoryPicker({
         <Input
           placeholder="e.g. Pool cleaning"
           value={custom}
-          onChange={(e) => onChange(serialize(selectedPresets, e.target.value))}
+          onChange={(e) => onChange(toOutgoingValue(selectedPresets, e.target.value))}
           autoFocus
         />
       ) : null}
