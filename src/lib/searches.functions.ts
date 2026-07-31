@@ -623,15 +623,16 @@ async function processCandidate(
   if (fb.url) counters.facebookFound++;
   if (potentialCandidates.length > 0) counters.websitesChecked++;
 
-  // Only save candidates that have no website AND a found email — everything
-  // else (has a site, or no email could be found for it) is examined and
-  // counted but never written to the shared leads table. This is what makes
-  // the discover/verify loop's "keep pulling more pages until the target
-  // count is met" logic (above, in runVerifyChunk) mean the same thing as
-  // what actually lands in Saved Leads.
+  // Save any candidate with no apparent independent website AND a confirmed
+  // Facebook page — a found email is a bonus, not a requirement. Everything
+  // else (has a site, or no Facebook page at all) is examined and counted but
+  // never written to the shared leads table. This is what makes the
+  // discover/verify loop's "keep pulling more pages until the target count is
+  // met" logic (above, in runVerifyChunk) mean the same thing as what
+  // actually lands in Saved Leads.
   const meetsSaveCriteria =
     (QUALIFYING_WEBSITE_STATUSES as readonly string[]).includes(verification.status) &&
-    Boolean(email.email);
+    Boolean(fb.url);
   if (!meetsSaveCriteria) {
     await supabase
       .from("search_results")
@@ -640,7 +641,7 @@ async function processCandidate(
         website_status: verification.status,
         qualified,
         confidence_score: confidence.score,
-        error_message: "no website + email required to save a lead",
+        error_message: "no website + a confirmed Facebook page required to save a lead",
       })
       .eq("id", result.id);
     counters.processed++;

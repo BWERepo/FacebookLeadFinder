@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { listLeadsForSearch } from "@/lib/leads.functions";
 import { isSafeExternalUrl } from "@/lib/url";
-import { QUALIFYING_WEBSITE_STATUSES, type WebsiteStatus } from "@/lib/domain";
+import type { WebsiteStatus } from "@/lib/domain";
 
 type LeadRow = {
   id: string;
@@ -34,7 +34,7 @@ type LeadRow = {
  * filterable table with bulk actions lives on the Saved Leads page (Phase 6).
  */
 export function SearchResultsList({ searchId }: { searchId: string }) {
-  const [onlyNoWebsiteWithEmail, setOnlyNoWebsiteWithEmail] = useState(false);
+  const [onlyWithEmail, setOnlyWithEmail] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["search-results", searchId],
@@ -44,15 +44,13 @@ export function SearchResultsList({ searchId }: { searchId: string }) {
   });
 
   const allLeads = useMemo(() => (data ?? []) as LeadRow[], [data]);
+  // Every saved lead already has no apparent website and a confirmed Facebook
+  // page — see meetsSaveCriteria in searches.functions.ts — so this only needs
+  // to filter on whether an email was additionally found for it.
   const leads = useMemo(() => {
-    if (!onlyNoWebsiteWithEmail) return allLeads;
-    return allLeads.filter(
-      (lead) =>
-        QUALIFYING_WEBSITE_STATUSES.includes(
-          lead.website_status as (typeof QUALIFYING_WEBSITE_STATUSES)[number],
-        ) && Boolean(lead.email),
-    );
-  }, [allLeads, onlyNoWebsiteWithEmail]);
+    if (!onlyWithEmail) return allLeads;
+    return allLeads.filter((lead) => Boolean(lead.email));
+  }, [allLeads, onlyWithEmail]);
 
   if (isLoading && allLeads.length === 0) return <LoadingBlock rows={3} label="Loading results" />;
 
@@ -60,12 +58,12 @@ export function SearchResultsList({ searchId }: { searchId: string }) {
     allLeads.length > 0 ? (
       <div className="flex items-center gap-2">
         <Checkbox
-          id="only-no-website-with-email"
-          checked={onlyNoWebsiteWithEmail}
-          onCheckedChange={(checked) => setOnlyNoWebsiteWithEmail(checked === true)}
+          id="only-with-email"
+          checked={onlyWithEmail}
+          onCheckedChange={(checked) => setOnlyWithEmail(checked === true)}
         />
-        <Label htmlFor="only-no-website-with-email" className="text-sm font-normal">
-          Only show leads with no website and an email found
+        <Label htmlFor="only-with-email" className="text-sm font-normal">
+          Only show leads with an email found
         </Label>
       </div>
     ) : null;
