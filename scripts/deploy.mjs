@@ -13,8 +13,17 @@
  * nearest one). `main` and `assets` are nitro's to own — never touch them.
  */
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { resolve } from "node:path";
+import { tmpdir } from "node:os";
 
 const ENVIRONMENTS = {
   staging: {
@@ -125,11 +134,22 @@ run("npx", ["wrangler", "deploy", "--config", "wrangler.json", "--name", env.nam
 // the repo's version.json out ahead of what's actually live. version.json is
 // the only thing touched here; anything else pending stays exactly as the
 // caller left it.
-run("git", ["add", "version.json"]);
-run("git", [
-  "commit",
-  "-m",
-  `Bump version to ${version} for ${target} deploy\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>`,
-]);
-run("git", ["push", "origin", "HEAD"]);
+//
+// The commit message goes through a temp file (`git commit -F`), not a
+// "-m <message>" argv element: on Windows, `run`'s shell:true concatenates
+// array args into one command line without quoting, so a message containing
+// spaces silently gets word-split into separate (bogus) arguments instead of
+// staying one string.
+const commitMsgFile = resolve(tmpdir(), `flf-deploy-commit-msg-${Date.now()}.txt`);
+writeFileSync(
+  commitMsgFile,
+  `Bump version to ${version} for ${target} deploy\n\nCo-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>\n`,
+);
+try {
+  run("git", ["add", "version.json"]);
+  run("git", ["commit", "-F", commitMsgFile]);
+  run("git", ["push", "origin", "HEAD"]);
+} finally {
+  unlinkSync(commitMsgFile);
+}
 console.log(`\n=> Committed and pushed version.json (v${version})\n`);
