@@ -17,23 +17,27 @@ policy — the references point at the file that enforces it.
   session, cookie jar, or credential of any kind anywhere in this codebase.
 - **No CAPTCHA is solved or circumvented.** Nothing here automates, defeats,
   or works around a bot challenge on any site.
-- **`robots.txt` and rate limits are respected.** The one place this app
+- **`robots.txt` and rate limits are respected.** Every place this app
   fetches an arbitrary third-party page —
-  [`page-probe.server.ts`](src/lib/providers/page-probe.server.ts), used to
-  check whether a candidate website is reachable — identifies itself honestly
-  with a real User-Agent (`FacebookLeadFinderBot/1.0`) rather than spoofing a
-  browser, uses a real timeout instead of hammering a slow server, and goes
-  through [`fetchWithBackoff`](src/lib/providers/http.ts), which backs off
-  exponentially on 429/5xx rather than retrying aggressively.
+  [`page-probe.server.ts`](src/lib/providers/page-probe.server.ts) (checking
+  whether a candidate website is reachable) and
+  [`brave-search.server.ts`](src/lib/providers/brave-search.server.ts)
+  (scanning a search result page for a published email) — identifies itself
+  honestly with a real User-Agent (`FacebookLeadFinderBot/1.0`) rather than
+  spoofing a browser, uses a real timeout instead of hammering a slow server,
+  and goes through [`fetchWithBackoff`](src/lib/providers/http.ts), which
+  backs off exponentially on 429/5xx rather than retrying aggressively.
 - **No unauthorized Facebook or Meta endpoint is ever called**, by
   construction: the provider abstraction
   ([`src/lib/providers/types.ts`](src/lib/providers/types.ts)) is the only
   boundary through which candidate data enters the app, and every
   implementation behind it (`mock.provider.ts`,
-  `google-places.provider.server.ts`, the documented-but-unimplemented Bing
-  /Brave/SerpApi stubs) talks only to its own named, compliant API. Auditing
-  "does this app talk to Facebook" is answerable by reading five files, not
-  the whole codebase.
+  `google-places.provider.server.ts`, `brave-search.server.ts`, the
+  documented-but-unimplemented Bing/SerpApi stubs) talks only to its own
+  named, compliant API — Google's, Brave's, or a page a search result
+  actually points at, never Facebook's. Auditing "does this app talk to
+  Facebook" is answerable by reading a handful of files, not the whole
+  codebase.
 
 ## 2. Compliant data sources only
 
@@ -41,6 +45,12 @@ Every candidate business enters the app through one of:
 
 - **The Google Places API (New) v1** — a licensed, paid API
   ([`google-places.provider.server.ts`](src/lib/providers/google-places.provider.server.ts)).
+- **The Brave Search API** — a licensed API with a free tier, used only as a
+  secondary email-discovery step for a business Places found with no website
+  of its own
+  ([`brave-search.server.ts`](src/lib/providers/brave-search.server.ts)); see
+  §3. It never discovers candidate businesses themselves — Brave has no
+  structured business directory to do that with.
 - **A user-supplied CSV/XLSX import** — the user's own data, brought in
   through the Phase 10 import wizard.
 - **A Facebook URL a user pastes in manually** — never fetched by this app on
@@ -51,11 +61,14 @@ Every candidate business enters the app through one of:
   calls (see [`mock.provider.ts`](src/lib/providers/mock.provider.ts) and
   [`demo-data.ts`](src/lib/demo-data.ts)).
 
-No other data source exists. Bing and Brave/SerpApi are documented,
-unimplemented stubs (`bing.provider.stub.ts`, etc.) that exist only so the
-`SearchProvider` interface has a complete, honest inventory of what this app
-could support — setting an API key for one of them does nothing until an
-adapter is actually written.
+No other data source exists. Bing and SerpApi are documented, unimplemented
+stubs (`bing.provider.stub.ts`, `serpapi.provider.stub.ts`) that exist only so
+the `SearchProvider` interface has a complete, honest inventory of what this
+app could support — setting an API key for one of them does nothing until an
+adapter is actually written. `brave.provider.stub.ts` is the same kind of
+stub for Brave as a *standalone* `SearchProvider`; the live integration
+described above is narrower — an internal helper Google Places calls, not a
+selectable provider in Settings.
 
 ## 3. Email addresses are never guessed
 
@@ -63,9 +76,14 @@ adapter is actually written.
 only an address that was literally present in fetched public content. Nothing
 in this codebase constructs an address from a pattern (`firstname@domain`,
 `info@domain`, etc.). Google Places (New) does not return an email field at
-all, so its adapter always reports `not_found` rather than inventing one —
-see
-[`google-places.provider.server.ts`](src/lib/providers/google-places.provider.server.ts).
+all, so its adapter falls back to a Brave Search web lookup (optional — a
+no-op without `BRAVE_SEARCH_API_KEY`) for a business with no website of its
+own: it searches the open web by business name and location, then scans
+whatever public pages turn up (directories, listings, mentions) — **never
+Facebook** — for a literal published address. See
+[`google-places.provider.server.ts`](src/lib/providers/google-places.provider.server.ts)
+and
+[`brave-search.server.ts`](src/lib/providers/brave-search.server.ts).
 [`email-discovery.test.ts`](src/lib/providers/email-discovery.test.ts) asserts
 this module has no address-construction code path at all, so a future change
 that tried to add one would fail a test, not just violate an unenforced

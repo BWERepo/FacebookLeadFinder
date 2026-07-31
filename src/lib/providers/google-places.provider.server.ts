@@ -18,12 +18,15 @@
  * website" signal this adapter can get — it never claims more than that. A
  * `websiteUri` pointing at facebook.com is read as evidence of a Facebook
  * page, not as "no separate website exists"; Places has no way to positively
- * confirm a Facebook *business page*, and `findPublicEmail` never constructs
- * an address — Places doesn't return one, so it always reports "not found"
- * rather than guessing. See COMPLIANCE.md.
+ * confirm a Facebook *business page*. `findPublicEmail` never constructs an
+ * address — Places doesn't return one at all — but for a business with no
+ * website, it falls back to a Brave Search web lookup
+ * (brave-search.server.ts) for a literally-published address on some other
+ * public page (a directory, a listing, a mention). See COMPLIANCE.md.
  */
 
 import { fetchWithBackoff } from "@/lib/providers/http";
+import { findEmailViaWebSearch } from "@/lib/providers/brave-search.server";
 import { probePage } from "@/lib/providers/page-probe.server";
 import { ProviderAuthError, ProviderNotConfigured, type SearchProvider } from "./types";
 import type {
@@ -232,10 +235,24 @@ export function createGooglePlacesProvider(): SearchProvider {
       return { url: null, source: "provider", profileListsWebsite: null };
     },
 
-    async findPublicEmail(): Promise<EmailResult> {
-      // Places (New) does not return an email field, and this app never
-      // constructs one. See COMPLIANCE.md.
-      return { email: null, status: "not_found", source: "email_domain" };
+    async findPublicEmail(business): Promise<EmailResult> {
+      // Places (New) has no email field of its own. A business with its own
+      // independent website is already outside this app's target lead type
+      // (it's excluded from "qualified" regardless), so the web-search
+      // fallback is scoped to the no-website case it actually matters for —
+      // never Facebook, and never a guess. A no-op when Brave isn't
+      // configured.
+      if (business.websiteUri && !isFacebookWebsiteUri(business.websiteUri)) {
+        return { email: null, status: "not_found", source: "email_domain" };
+      }
+      const email = await findEmailViaWebSearch({
+        name: business.name,
+        city: business.city,
+        state: business.state,
+      });
+      return email
+        ? { email, status: "publicly_listed", source: "search_name" }
+        : { email: null, status: "not_found", source: "email_domain" };
     },
 
     async findPotentialWebsite(business) {

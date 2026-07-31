@@ -50,6 +50,59 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&#39;/g, "'");
 }
 
+/**
+ * Domains that turn up constantly in a raw regex scan of a page's HTML but
+ * are never a business's own contact address — tracking pixels, a page
+ * builder's own support address, placeholder addresses left in a template.
+ * Filtering these out is about accuracy, not compliance: every address this
+ * still returns came from the page's own literal text, nothing is guessed or
+ * constructed (see providers/email-discovery.test.ts).
+ */
+const NON_BUSINESS_EMAIL_DOMAINS = new Set([
+  "example.com",
+  "example.org",
+  "sentry.io",
+  "wixpress.com",
+  "godaddy.com",
+  "schema.org",
+  "w3.org",
+  "domain.com",
+  "yourdomain.com",
+]);
+
+const EMAIL_PATTERN =
+  /[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+/g;
+
+function isPlausibleBusinessEmail(email: string): boolean {
+  const domain = email.split("@")[1]?.toLowerCase();
+  if (!domain || NON_BUSINESS_EMAIL_DOMAINS.has(domain)) return false;
+  // A run of hex-ish characters before the @ is almost always a generated
+  // asset hash or tracking ID (e.g. Wix/Squarespace embed noise), not
+  // something a person typed as an address.
+  if (/^[0-9a-f]{16,}$/i.test(email.split("@")[0])) return false;
+  return true;
+}
+
+/**
+ * Every plausible email address literally present in a page (or a plain text
+ * snippet, e.g. a search result description): `mailto:` link targets first
+ * (highest confidence — an explicit contact affordance), then any bare
+ * address in the visible text. Returns `null` when nothing qualifies, never a
+ * guessed or constructed address.
+ */
+export function extractEmailFromHtml(html: string): string | null {
+  const mailtoMatches = [...html.matchAll(/mailto:([^"'\s?>]+)/gi)].map((m) =>
+    decodeURIComponent(m[1]).toLowerCase(),
+  );
+  const fromMailto = mailtoMatches.find(isPlausibleBusinessEmail);
+  if (fromMailto) return fromMailto;
+
+  const text = extractVisibleText(html);
+  const textMatches = text.match(EMAIL_PATTERN) ?? [];
+  const fromText = textMatches.map((m) => m.toLowerCase()).find(isPlausibleBusinessEmail);
+  return fromText ?? null;
+}
+
 export async function probePage(provider: ProviderName, url: string): Promise<VerifyResult> {
   // Defense in depth: searches.functions.ts already validates a candidate URL
   // with normalizeUrl before calling this, but this is the actual outbound

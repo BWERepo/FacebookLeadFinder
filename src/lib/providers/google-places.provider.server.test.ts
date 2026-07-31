@@ -176,4 +176,73 @@ describe("createGooglePlacesProvider", () => {
       /rejected its credentials/,
     );
   });
+
+  describe("findPublicEmail", () => {
+    const originalBraveKey = process.env.BRAVE_SEARCH_API_KEY;
+    const noWebsiteBusiness = mapPlaceToRawBusiness(
+      { ...SAMPLE_PLACE, websiteUri: undefined },
+      "Restaurants",
+    );
+
+    afterEach(() => {
+      if (originalBraveKey === undefined) delete process.env.BRAVE_SEARCH_API_KEY;
+      else process.env.BRAVE_SEARCH_API_KEY = originalBraveKey;
+    });
+
+    it("reports not_found without ever calling Brave when the business has its own website", async () => {
+      process.env.GOOGLE_PLACES_API_KEY = "test-key";
+      process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const provider = createGooglePlacesProvider();
+      const business = mapPlaceToRawBusiness(SAMPLE_PLACE, "Restaurants"); // has websiteUri
+      const result = await provider.findPublicEmail(business);
+
+      expect(result).toEqual({ email: null, status: "not_found", source: "email_domain" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("reports not_found when Brave isn't configured, for a no-website business", async () => {
+      process.env.GOOGLE_PLACES_API_KEY = "test-key";
+      delete process.env.BRAVE_SEARCH_API_KEY;
+      vi.stubGlobal("fetch", vi.fn());
+
+      const provider = createGooglePlacesProvider();
+      const result = await provider.findPublicEmail(noWebsiteBusiness);
+      expect(result).toEqual({ email: null, status: "not_found", source: "email_domain" });
+    });
+
+    it("falls back to a Brave web search for a no-website business and reports what it finds", async () => {
+      process.env.GOOGLE_PLACES_API_KEY = "test-key";
+      process.env.BRAVE_SEARCH_API_KEY = "brave-key";
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              web: {
+                results: [
+                  {
+                    title: "Rosalita's Taqueria - Yelp",
+                    url: "https://yelp.com/biz/rosalitas",
+                    description: "Contact: hello@rosalitastaqueria.com",
+                  },
+                ],
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        ),
+      );
+
+      const provider = createGooglePlacesProvider();
+      const result = await provider.findPublicEmail(noWebsiteBusiness);
+      expect(result).toEqual({
+        email: "hello@rosalitastaqueria.com",
+        status: "publicly_listed",
+        source: "search_name",
+      });
+    });
+  });
 });

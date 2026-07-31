@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { probePage } from "./page-probe.server";
+import { extractEmailFromHtml, probePage } from "./page-probe.server";
 
 function htmlResponse(body: string, init: ResponseInit = {}) {
   return new Response(body, {
@@ -93,6 +93,46 @@ describe("probePage", () => {
     );
     const result = await probePage("google_places", "https://example.com/no-title");
     expect(result.pageTitle).toBeNull();
+  });
+
+  describe("extractEmailFromHtml", () => {
+    it("prefers a mailto: link over a bare address in the text", () => {
+      const html = `<a href="mailto:owner@joesplumbing.com">Email us</a><p>or write info@other.com</p>`;
+      expect(extractEmailFromHtml(html)).toBe("owner@joesplumbing.com");
+    });
+
+    it("finds a bare address in visible text when there's no mailto: link", () => {
+      const html = `<body><p>Reach us at contact@bluebirdbakery.com any time.</p></body>`;
+      expect(extractEmailFromHtml(html)).toBe("contact@bluebirdbakery.com");
+    });
+
+    it("decodes a URL-encoded mailto: target", () => {
+      const html = `<a href="mailto:owner%40joesplumbing.com">Email</a>`;
+      expect(extractEmailFromHtml(html)).toBe("owner@joesplumbing.com");
+    });
+
+    it("returns null when nothing is present", () => {
+      const html = `<html><body><p>No contact info here.</p></body></html>`;
+      expect(extractEmailFromHtml(html)).toBeNull();
+    });
+
+    it("filters out known non-business domains (trackers, placeholders)", () => {
+      const html = `<p>noreply@sentry.io logged this. contact@example.com is a placeholder.</p>`;
+      expect(extractEmailFromHtml(html)).toBeNull();
+    });
+
+    it("filters out a hex-hash local part (generated asset/tracking noise)", () => {
+      const html = `<p>a1b2c3d4e5f6a7b8@wixpress.com and 0123456789abcdef0123@realdomain.com</p>`;
+      // wixpress.com is domain-blocked; the hex-hash local part at realdomain.com
+      // should also be rejected even though the domain itself isn't blocklisted.
+      expect(extractEmailFromHtml(html)).toBeNull();
+    });
+
+    it("works on a plain-text snippet with no HTML markup at all", () => {
+      expect(extractEmailFromHtml("Contact Jane at jane@acmeplumbing.com for a quote.")).toBe(
+        "jane@acmeplumbing.com",
+      );
+    });
   });
 
   describe("SSRF guard", () => {
