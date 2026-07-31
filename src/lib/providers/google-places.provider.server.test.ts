@@ -160,6 +160,53 @@ describe("createGooglePlacesProvider", () => {
     expect(headers["X-Goog-FieldMask"]).toContain("places.id");
   });
 
+  it("reports a fallback sentinel (not null) as nextPageToken after a ZIP-radius search's first page, since :searchNearby never paginates on its own", async () => {
+    process.env.GOOGLE_PLACES_API_KEY = "test-key";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response(JSON.stringify({ places: [] }), { status: 200 })),
+    );
+
+    const provider = createGooglePlacesProvider();
+    const criteria: ZipRadiusCriteria = {
+      searchType: "zip_radius",
+      zip: "37902",
+      radiusMiles: 10,
+      category: "Restaurants",
+      maxResults: 100,
+    };
+    const page = await provider.searchBusinesses(criteria, {});
+    expect(page.nextPageToken).not.toBeNull();
+  });
+
+  it("switches to :searchText once the ZIP-radius fallback sentinel comes back as the cursor", async () => {
+    process.env.GOOGLE_PLACES_API_KEY = "test-key";
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        async () => new Response(JSON.stringify({ places: [] }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = createGooglePlacesProvider();
+    const criteria: ZipRadiusCriteria = {
+      searchType: "zip_radius",
+      zip: "37902",
+      radiusMiles: 10,
+      category: "Restaurants",
+      maxResults: 100,
+    };
+    const first = await provider.searchBusinesses(criteria, {});
+    await provider.searchBusinesses(criteria, { pageToken: first.nextPageToken });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0][0])).toContain(":searchNearby");
+    expect(String(fetchMock.mock.calls[1][0])).toContain(":searchText");
+    const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    // Starting fresh, not sending the sentinel itself as a real Places page token.
+    expect(secondBody.pageToken).toBeUndefined();
+  });
+
   it("throws ProviderAuthError on a 401/403 response", async () => {
     process.env.GOOGLE_PLACES_API_KEY = "test-key";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));

@@ -43,6 +43,9 @@ import { resolveCategory } from "@/lib/categories";
 const PLACES_BASE_URL = "https://places.googleapis.com/v1/places";
 const PAGE_SIZE = 20;
 
+/** See searchBusinesses — signals "switch from :searchNearby to :searchText now", not a real Places token. */
+const SEARCH_TEXT_FALLBACK = "__search_text_fallback__";
+
 const SEARCH_FIELD_MASK_COMMON = [
   "places.id",
   "places.displayName",
@@ -198,32 +201,50 @@ export function createGooglePlacesProvider(): SearchProvider {
     async searchBusinesses(criteria, cursor: ProviderCursor): Promise<SearchPage> {
       const categoryHint = resolveCategory(criteria.category).label;
 
+      // :searchNearby has no pagination of its own at all — it never returns
+      // a nextPageToken, so it can only ever give one page of up to
+      // PAGE_SIZE results. To actually keep searching past that (see the
+      // discover/verify loop in searches.functions.ts, which relies on
+      // nextPageToken being non-null to know there's more to try), a
+      // zip_radius search uses :searchNearby for its first page only, then
+      // falls back to :searchText — which does paginate — using the same
+      // location-in-text-query approach area_code/state_county already use.
+      // SEARCH_TEXT_FALLBACK is a sentinel, never a real Places page token:
+      // it just tells the next call "switch modes now, starting fresh."
       const nearby =
-        criteria.searchType === "zip_radius"
+        criteria.searchType === "zip_radius" && !cursor.pageToken
           ? (() => {
               const center = zipToCentroid(criteria.zip);
               return center ? { center, radiusMiles: criteria.radiusMiles } : null;
             })()
           : null;
 
-      const response = nearby
-        ? await callPlaces("searchNearby", {
-            includedTypes: [],
-            maxResultCount: PAGE_SIZE,
-            locationRestriction: {
-              circle: {
-                center: { latitude: nearby.center.lat, longitude: nearby.center.lng },
-                radius: Math.min(milesToMeters(nearby.radiusMiles), 50_000),
-              },
+      let response: SearchResponse;
+      let nextPageToken: string | null;
+
+      if (nearby) {
+        response = await callPlaces("searchNearby", {
+          includedTypes: [],
+          maxResultCount: PAGE_SIZE,
+          locationRestriction: {
+            circle: {
+              center: { latitude: nearby.center.lat, longitude: nearby.center.lng },
+              radius: Math.min(milesToMeters(nearby.radiusMiles), 50_000),
             },
-          })
-        : await callPlaces("searchText", {
-            textQuery: textQueryFor(criteria),
-            pageToken: cursor.pageToken || undefined,
-          });
+          },
+        });
+        nextPageToken = SEARCH_TEXT_FALLBACK;
+      } else {
+        const pageToken =
+          cursor.pageToken && cursor.pageToken !== SEARCH_TEXT_FALLBACK
+            ? cursor.pageToken
+            : undefined;
+        response = await callPlaces("searchText", { textQuery: textQueryFor(criteria), pageToken });
+        nextPageToken = response.nextPageToken ?? null;
+      }
 
       const businesses = (response.places ?? []).map((p) => mapPlaceToRawBusiness(p, categoryHint));
-      return { businesses, nextPageToken: response.nextPageToken ?? null, calls: 1 };
+      return { businesses, nextPageToken, calls: 1 };
     },
 
     async findFacebookPage(business): Promise<FacebookPageResult> {
