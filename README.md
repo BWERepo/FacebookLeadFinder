@@ -5,9 +5,14 @@ businesses that run a Facebook business page but have **no website of their
 own** — the businesses most likely to want one.
 
 > **Status:** feature-complete through Phase 12's hardening and documentation
-> work; production deploy is the one remaining step. See
-> [Implementation phases](#implementation-phases) below, and
-> [COMPLIANCE.md](./COMPLIANCE.md) for the compliance and security posture.
+> work. Never deployed — neither Worker exists yet on Cloudflare, and local
+> `.env` is missing `SUPABASE_PUBLISHABLE_KEY`/`VITE_SUPABASE_PUBLISHABLE_KEY`
+> and `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API Keys in the
+> Supabase dashboard). Fill those in, then `npm run deploy -- staging`
+> followed by `npm run deploy -- production` (see
+> [Deployment](#deployment)). See [Implementation phases](#implementation-phases)
+> below, and [COMPLIANCE.md](./COMPLIANCE.md) for the compliance and security
+> posture.
 
 ---
 
@@ -154,7 +159,7 @@ build, because Nitro reads exactly one wrangler file.
 | 9     | CSV and XLSX export                                              | Done   |
 | 10    | CSV/XLSX import wizard                                           | Done   |
 | 11    | Settings and the Google Places adapter                           | Done   |
-| 12    | Hardening, documentation, production deploy                      | Hardening/docs done; production deploy pending |
+| 12    | Hardening, documentation, production deploy                      | Hardening/docs done; deploy blocked on Supabase keys — see Status above |
 
 The application is designed to run **with no paid APIs at all**: the mock
 provider plus seeded demo data exercise the entire workflow end to end.
