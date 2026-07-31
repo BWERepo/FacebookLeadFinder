@@ -14,6 +14,7 @@ import { CategoryPicker } from "@/components/search/CategoryPicker";
 import { areaCodeCriteriaSchema, type AreaCodeCriteria } from "@/lib/search-criteria";
 import { STATES } from "@/data/states";
 import { AREA_CODES } from "@/data/area-codes";
+import { useRememberedCategory } from "@/lib/use-remembered-category";
 
 const OTHER_AREA_CODE = "__other__";
 
@@ -29,7 +30,7 @@ export function AreaCodeForm({
   const [areaCode, setAreaCode] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useRememberedCategory();
   const [maxResults, setMaxResults] = useState(defaultMaxResults);
   const [error, setError] = useState<string | null>(null);
   const [customMode, setCustomMode] = useState(false);

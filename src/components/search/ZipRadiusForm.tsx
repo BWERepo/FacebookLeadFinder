@@ -14,6 +14,7 @@ import {
 import { CategoryPicker } from "@/components/search/CategoryPicker";
 import { zipRadiusCriteriaSchema, type ZipRadiusCriteria } from "@/lib/search-criteria";
 import { listAreas } from "@/lib/geo.functions";
+import { useRememberedCategory } from "@/lib/use-remembered-category";
 
 export function ZipRadiusForm({
   busy,
@@ -28,7 +29,7 @@ export function ZipRadiusForm({
 }) {
   const [zip, setZip] = useState("");
   const [radiusMiles, setRadiusMiles] = useState(defaultRadiusMiles);
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useRememberedCategory();
   const [maxResults, setMaxResults] = useState(defaultMaxResults);
   const [error, setError] = useState<string | null>(null);
 

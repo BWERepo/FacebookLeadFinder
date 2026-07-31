@@ -14,6 +14,7 @@ import { CategoryPicker } from "@/components/search/CategoryPicker";
 import { stateCountyCriteriaSchema, type StateCountyCriteria } from "@/lib/search-criteria";
 import { STATES } from "@/data/states";
 import { countiesForState, countyDisplayName, hasCountyData } from "@/data/counties";
+import { useRememberedCategory } from "@/lib/use-remembered-category";
 
 export function StateCountyForm({
   busy,
@@ -28,7 +29,7 @@ export function StateCountyForm({
   const [county, setCounty] = useState("");
   const [customCounty, setCustomCounty] = useState("");
   const [city, setCity] = useState("");
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useRememberedCategory();
   const [maxResults, setMaxResults] = useState(defaultMaxResults);
   const [error, setError] = useState<string | null>(null);
 
