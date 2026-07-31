@@ -1,8 +1,41 @@
+import { useEffect, useState } from "react";
 import { CheckCircle2, Loader2, TriangleAlert, XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import type { SearchJobState } from "@/hooks/use-search-job";
+
+/** "1h 04m 12s" / "4m 05s" / "12s", trimming leading zero units. */
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (hours > 0 || minutes > 0) parts.push(`${String(minutes).padStart(hours > 0 ? 2 : 1, "0")}m`);
+  parts.push(`${String(seconds).padStart(minutes > 0 || hours > 0 ? 2 : 1, "0")}s`);
+  return parts.join(" ");
+}
+
+/** Ticks once a second while `active`, so elapsed time stays live during a running search. */
+function useElapsed(
+  startedAt: string | null,
+  endedAt: string | null,
+  active: boolean,
+): string | null {
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+
+  if (!startedAt) return null;
+  const end = endedAt ? new Date(endedAt).getTime() : Date.now();
+  return formatElapsed(end - new Date(startedAt).getTime());
+}
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Starting…",
@@ -33,6 +66,9 @@ export function JobProgress({
   onResume: () => void;
 }) {
   const { progress, running, error } = state;
+  // Called unconditionally, before the early return below — Rules of Hooks.
+  const elapsed = useElapsed(progress?.startedAt ?? null, progress?.endedAt ?? null, running);
+
   if (!progress && !error) return null;
 
   const percent =
@@ -73,9 +109,11 @@ export function JobProgress({
           <Progress value={percent ?? undefined} className="mt-3" />
           <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
             <Stat label="Discovered" value={progress.candidatesDiscovered} />
+            <Stat label="Sites searched" value={progress.candidatesProcessed} />
             <Stat label="Facebook pages" value={progress.facebookPagesFound} />
             <Stat label="Websites checked" value={progress.websitesChecked} />
             <Stat label="Qualified" value={progress.qualifiedFound} emphasize />
+            {elapsed !== null ? <Stat label="Elapsed" value={elapsed} /> : null}
           </dl>
           {progress.notes.length > 0 ? (
             <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
@@ -96,7 +134,15 @@ export function JobProgress({
   );
 }
 
-function Stat({ label, value, emphasize }: { label: string; value: number; emphasize?: boolean }) {
+function Stat({
+  label,
+  value,
+  emphasize,
+}: {
+  label: string;
+  value: number | string;
+  emphasize?: boolean;
+}) {
   return (
     <div>
       <dt className="text-muted-foreground">{label}</dt>

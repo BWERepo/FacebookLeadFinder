@@ -47,6 +47,7 @@ import type { DomainRule } from "@/lib/excluded-domains";
 import { emailDomain, isFreeEmailDomain, normalizeUrl } from "@/lib/url";
 import { zipsForCounty, zipsForAreaCodeCities } from "@/data/geo";
 import { areaCodeInfo } from "@/data/area-codes";
+import { QUALIFYING_WEBSITE_STATUSES } from "@/lib/domain";
 
 /** Max concurrently active (pending/running) jobs per user — a rate-limit guard. */
 const MAX_CONCURRENT_JOBS_PER_USER = 2;
@@ -172,6 +173,9 @@ export type SearchProgress = {
   errorCount: number;
   lastError: string | null;
   notes: string[];
+  startedAt: string | null;
+  /** null while the job is still running — the client computes elapsed time against "now" itself. */
+  endedAt: string | null;
 };
 
 function toProgress(row: Record<string, unknown>): SearchProgress {
@@ -190,6 +194,8 @@ function toProgress(row: Record<string, unknown>): SearchProgress {
     errorCount: row.error_count as number,
     lastError: (row.last_error as string | null) ?? null,
     notes: (row.notes as string[] | null) ?? [],
+    startedAt: (row.started_at as string | null) ?? null,
+    endedAt: (row.ended_at as string | null) ?? null,
   };
 }
 
@@ -353,16 +359,23 @@ async function runDiscoverChunk(
     discovered += page.businesses.length;
   }
 
-  const maxResults = job.max_results as number;
-  const exhausted = page.nextPageToken === null || discovered >= maxResults;
-
+  // A discover chunk always hands off to verify next, one provider page at a
+  // time, rather than pulling every page up front — see runVerifyChunk's
+  // phase decision, which is what actually decides whether to come back for
+  // another page. maxResults is a target lead count now, not a raw-discovery
+  // cap: stopping discovery once `discovered >= maxResults` used to mean a
+  // search reported "done" after finding N candidates even when none of them
+  // qualified, which is the whole reason this loop exists. The remaining,
+  // real backstop against a search running forever is the provider's own
+  // pagination limit (page.nextPageToken goes null): Google Places caps out
+  // around 60 results per search regardless of what's asked for here.
   const { data: updated, error } = await supabase
     .from("searches")
     .update({
       candidates_discovered: discovered,
       provider_calls: providerCalls,
       cursor: { ...cursor, pageToken: page.nextPageToken },
-      phase: exhausted ? "verify" : "discover",
+      phase: "verify",
       notes,
       chunk_count: (job.chunk_count as number) + 1,
       heartbeat_at: new Date().toISOString(),
@@ -468,6 +481,29 @@ async function runVerifyChunk(
     .eq("search_id", job.id)
     .eq("processing_state", "queued");
 
+  // Still work queued from the current page — keep verifying it before
+  // deciding anything about going back for another page.
+  let phase: string;
+  if ((remaining ?? 0) > 0) {
+    phase = "verify";
+  } else {
+    // This page is fully verified. Go back to discover for another page only
+    // if the target isn't met yet AND the provider actually has more to give
+    // (cursor.pageToken survives from the discover chunk that queued this
+    // batch — null means the provider itself is exhausted, not just that
+    // this page ran out).
+    const cursor = (job.cursor as { pageToken?: string | null } | null) ?? {};
+    const providerHasMore = Boolean(cursor.pageToken);
+    const { count: matchedCount } = await supabase
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("source_search_id", job.id)
+      .in("website_status", QUALIFYING_WEBSITE_STATUSES)
+      .not("email", "is", null);
+    const targetMet = (matchedCount ?? 0) >= (job.max_results as number);
+    phase = !targetMet && providerHasMore ? "discover" : "finalize";
+  }
+
   const { data: updated, error } = await supabase
     .from("searches")
     .update({
@@ -480,7 +516,7 @@ async function runVerifyChunk(
       provider_calls: counters.providerCalls,
       error_count: counters.errorCount,
       last_error: lastError,
-      phase: (remaining ?? 0) > 0 ? "verify" : "finalize",
+      phase,
       chunk_count: (job.chunk_count as number) + 1,
       heartbeat_at: new Date().toISOString(),
     })
@@ -586,6 +622,30 @@ async function processCandidate(
 
   if (fb.url) counters.facebookFound++;
   if (potentialCandidates.length > 0) counters.websitesChecked++;
+
+  // Only save candidates that have no website AND a found email — everything
+  // else (has a site, or no email could be found for it) is examined and
+  // counted but never written to the shared leads table. This is what makes
+  // the discover/verify loop's "keep pulling more pages until the target
+  // count is met" logic (above, in runVerifyChunk) mean the same thing as
+  // what actually lands in Saved Leads.
+  const meetsSaveCriteria =
+    (QUALIFYING_WEBSITE_STATUSES as readonly string[]).includes(verification.status) &&
+    Boolean(email.email);
+  if (!meetsSaveCriteria) {
+    await supabase
+      .from("search_results")
+      .update({
+        processing_state: "skipped",
+        website_status: verification.status,
+        qualified,
+        confidence_score: confidence.score,
+        error_message: "no website + email required to save a lead",
+      })
+      .eq("id", result.id);
+    counters.processed++;
+    return;
+  }
 
   const normalized: DedupeCandidate = {
     normalized_name: normalizeBusinessName(business.name),
