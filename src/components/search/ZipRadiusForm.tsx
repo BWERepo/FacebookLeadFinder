@@ -18,14 +18,16 @@ import { listAreas } from "@/lib/geo.functions";
 export function ZipRadiusForm({
   busy,
   onSubmit,
+  defaultMaxResults = 100,
 }: {
   busy: boolean;
   onSubmit: (criteria: ZipRadiusCriteria) => void;
+  defaultMaxResults?: number;
 }) {
   const [zip, setZip] = useState("");
   const [radiusMiles, setRadiusMiles] = useState(10);
   const [category, setCategory] = useState("");
-  const [maxResults, setMaxResults] = useState(100);
+  const [maxResults, setMaxResults] = useState(defaultMaxResults);
   const [error, setError] = useState<string | null>(null);
 
   const { data: areas } = useQuery({ queryKey: ["known-areas"], queryFn: () => listAreas() });

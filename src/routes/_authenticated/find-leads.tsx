@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 
@@ -11,12 +12,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { LoadingBlock } from "@/components/LoadingBlock";
 import { SearchModeTabs } from "@/components/search/SearchModeTabs";
 import { JobProgress } from "@/components/search/JobProgress";
 import { SearchResultsList } from "@/components/leads/SearchResultsList";
 import { useSearchJob } from "@/hooks/use-search-job";
 import { startSearch } from "@/lib/searches.functions";
 import { exportLeads } from "@/lib/export.functions";
+import { getSettings } from "@/lib/settings.functions";
 import type { SearchCriteria } from "@/lib/search-criteria";
 import type { ExportFormat } from "@/lib/domain";
 
@@ -29,6 +32,16 @@ function FindLeadsPage() {
   const [starting, setStarting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const job = useSearchJob(searchId);
+
+  // Same queryKey settings.tsx uses, so this shares its cache rather than
+  // firing a second request. The forms need this loaded before they mount so
+  // their maxResults field starts at the user's actual default, not a
+  // hardcoded fallback that briefly shows then jumps.
+  const { data: settingsData, isLoading: settingsLoading } = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => getSettings(),
+  });
+  const defaultMaxResults = settingsData?.settings.default_max_results ?? 100;
 
   async function handleSubmit(criteria: SearchCriteria) {
     setStarting(true);
@@ -90,7 +103,15 @@ function FindLeadsPage() {
         }
       />
       <div className="space-y-6">
-        <SearchModeTabs busy={starting || job.running} onSubmit={handleSubmit} />
+        {settingsLoading ? (
+          <LoadingBlock rows={4} label="Loading search form" />
+        ) : (
+          <SearchModeTabs
+            busy={starting || job.running}
+            onSubmit={handleSubmit}
+            defaultMaxResults={defaultMaxResults}
+          />
+        )}
 
         {searchId ? (
           <>

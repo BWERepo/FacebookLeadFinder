@@ -18,16 +18,18 @@ import { countiesForState, countyDisplayName, hasCountyData } from "@/data/count
 export function StateCountyForm({
   busy,
   onSubmit,
+  defaultMaxResults = 100,
 }: {
   busy: boolean;
   onSubmit: (criteria: StateCountyCriteria) => void;
+  defaultMaxResults?: number;
 }) {
   const [state, setState] = useState("");
   const [county, setCounty] = useState("");
   const [customCounty, setCustomCounty] = useState("");
   const [city, setCity] = useState("");
   const [category, setCategory] = useState("");
-  const [maxResults, setMaxResults] = useState(100);
+  const [maxResults, setMaxResults] = useState(defaultMaxResults);
   const [error, setError] = useState<string | null>(null);
 
   const counties = useMemo(() => countiesForState(state), [state]);
