@@ -280,8 +280,24 @@ function generateBusiness(
   // set still looks like real search results rather than one repeated shape.
   const isQualifying = index % 2 === 0;
 
+  // Both providerId and facebookUrl must be unique *per criteria*, not just
+  // per index within one search's own pagination — index restarts at 0 for
+  // every search job, so "mock-gen-0" from a Boston search is the same
+  // string as "mock-gen-0" from an earlier Atlanta search. dedupe.ts treats
+  // a matching provider_place_id (or facebook_url) as a *certain* duplicate
+  // and merges the candidate into whatever lead already owns that ID —
+  // once a few searches have run, every generated candidate collides with
+  // an old lead from a different, unrelated search: nothing new gets
+  // inserted, `qualified_found` stays 0, and the new search's results list
+  // is empty even though the job "found" plenty of candidates. Salting both
+  // IDs with a hash of the criteria keeps a given search's own IDs stable
+  // (re-running the identical search still shows the identical businesses)
+  // while keeping different searches from colliding with each other.
+  const criteriaHash = seededRandom(criteriaKey(criteria))().toString().slice(2, 8);
+  const uniqueId = `${criteriaHash}-${index}`;
+
   return {
-    providerId: `mock-gen-${index}`,
+    providerId: `mock-gen-${uniqueId}`,
     name,
     address: `${100 + index} Generated St`,
     city: location.city,
@@ -295,15 +311,16 @@ function generateBusiness(
     websiteUri: isQualifying
       ? null
       : `https://${normalizeBusinessName(name).replace(/\s+/g, "")}.com`,
-    listingUrl: `https://maps.example/mock-gen-${index}`,
+    listingUrl: `https://maps.example/mock-gen-${uniqueId}`,
     scenario: isQualifying ? "facebook_only" : "has_website",
     // Deliberately not a plausible vanity slug like facebook.com/BlueRidgeBakery
     // — the generated name pool is a small, generic set of real-sounding
     // adjective/noun combos ("Blue Ridge Bakery", "Summit Dental", ...) that
     // can and does collide with an actual claimed page for an unrelated real
     // business. `profile.php?id=` is Facebook's numeric-ID URL form; a
-    // synthetic ID keyed off the mock index can't collide with anything real.
-    facebookUrl: `https://facebook.com/profile.php?id=61${String(index).padStart(13, "0")}`,
+    // synthetic ID keyed off the criteria and index can't collide with
+    // anything real, or with a different search's generated IDs.
+    facebookUrl: `https://facebook.com/profile.php?id=61${criteriaHash}${String(index).padStart(7, "0")}`,
     email: null,
     emailStatus: "not_found",
   };
