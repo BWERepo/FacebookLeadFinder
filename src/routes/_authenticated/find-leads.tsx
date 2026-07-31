@@ -5,6 +5,12 @@ import { toast } from "sonner";
 
 import { PageHeader } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SearchModeTabs } from "@/components/search/SearchModeTabs";
 import { JobProgress } from "@/components/search/JobProgress";
 import { SearchResultsList } from "@/components/leads/SearchResultsList";
@@ -12,6 +18,7 @@ import { useSearchJob } from "@/hooks/use-search-job";
 import { startSearch } from "@/lib/searches.functions";
 import { exportLeads } from "@/lib/export.functions";
 import type { SearchCriteria } from "@/lib/search-criteria";
+import type { ExportFormat } from "@/lib/domain";
 
 export const Route = createFileRoute("/_authenticated/find-leads")({
   component: FindLeadsPage,
@@ -35,11 +42,11 @@ function FindLeadsPage() {
     }
   }
 
-  async function handleExport() {
+  async function handleExport(format: ExportFormat) {
     if (!searchId) return;
     setExporting(true);
     try {
-      const result = await exportLeads({ data: { format: "csv", searchId } });
+      const result = await exportLeads({ data: { format, searchId } });
       const bytes = Uint8Array.from(atob(result.base64), (c) => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: result.mimeType });
       const url = URL.createObjectURL(blob);
@@ -63,10 +70,22 @@ function FindLeadsPage() {
         description="Search by ZIP code, telephone area code, or state and county. Results are checked for a Facebook page and an independent website."
         actions={
           searchId ? (
-            <Button size="sm" variant="outline" disabled={exporting} onClick={handleExport}>
-              <Download className="mr-1.5 size-4" aria-hidden="true" />
-              Export as CSV
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" disabled={exporting}>
+                  <Download className="mr-1.5 size-4" aria-hidden="true" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleExport("csv")}>
+                  Export as CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("xlsx")}>
+                  Export as XLSX (with hyperlinks)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : undefined
         }
       />
