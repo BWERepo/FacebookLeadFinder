@@ -54,7 +54,9 @@ function AuthPage() {
           password,
           options: {
             data: { full_name: fullName },
-            emailRedirectTo: `${window.location.origin}/dashboard`,
+            // See forgot-password.tsx — origin alone drops the base path
+            // this app is served under when it isn't "/".
+            emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}dashboard`,
           },
         });
         if (error) throw error;

@@ -199,6 +199,7 @@ type LeadRow = {
   assigned_user_id: string | null;
   last_contact_date: string | null;
   next_followup_date: string | null;
+  email_sent_at: string | null;
   opportunity_score: number | null;
   estimated_value_cents: number | null;
 

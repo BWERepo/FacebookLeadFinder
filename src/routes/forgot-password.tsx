@@ -22,7 +22,11 @@ function ForgotPasswordPage() {
     setBusy(true);
     try {
       await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        // window.location.origin is only protocol+host — it doesn't include
+        // the base path this app is served under when that isn't "/" (e.g.
+        // staging's /Staging.FacebookLeadFinder), so BASE_URL has to be
+        // spliced in too or the emailed link 404s once it's clicked.
+        redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}reset-password`,
       });
     } catch (error) {
       console.error(error);

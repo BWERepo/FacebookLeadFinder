@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
   Download,
+  MailCheck,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -42,7 +43,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { archiveLeads, deleteLeads, listLeads, unarchiveLeads } from "@/lib/leads.functions";
+import {
+  archiveLeads,
+  deleteLeads,
+  listLeads,
+  markEmailsSent,
+  unarchiveLeads,
+} from "@/lib/leads.functions";
 import { getDemoDataStatus, loadDemoData, removeDemoData } from "@/lib/demo-data.functions";
 import { exportLeads } from "@/lib/export.functions";
 import type { ExportFormat } from "@/lib/domain";
@@ -74,6 +81,7 @@ type LeadRow = {
   confidence_score: number;
   lead_status: LeadStatus;
   next_followup_date: string | null;
+  email_sent_at: string | null;
   archived_at: string | null;
 };
 
@@ -95,6 +103,7 @@ function LeadsPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [demoBusy, setDemoBusy] = useState(false);
@@ -141,13 +150,26 @@ function LeadsPage() {
     }
   }
 
-  function toggleRow(id: string) {
+  /**
+   * Shift-click selects every row between the last-clicked row and this one
+   * (the standard Gmail/Finder range-select gesture) — needed so marking
+   * email-sent on a big block of leads doesn't mean clicking each checkbox
+   * individually. A plain click still just toggles the one row.
+   */
+  function handleRowSelect(id: string, index: number, event: React.MouseEvent) {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (event.shiftKey && lastSelectedIndex !== null) {
+        const [start, end] = [lastSelectedIndex, index].sort((a, b) => a - b);
+        for (let i = start; i <= end; i++) next.add(rows[i].id);
+      } else if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
+    setLastSelectedIndex(index);
   }
 
   function toggleAllOnPage() {
@@ -191,6 +213,20 @@ function LeadsPage() {
       await refetch();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not unarchive leads.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleMarkEmailsSent() {
+    setBusy(true);
+    try {
+      await markEmailsSent({ data: { leadIds: selectedIds } });
+      toast.success(`Marked email sent for ${selectedIds.length} lead(s)`);
+      setSelected(new Set());
+      await refetch();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not mark emails sent.");
     } finally {
       setBusy(false);
     }
@@ -392,6 +428,10 @@ function LeadsPage() {
                 Archive
               </Button>
             )}
+            <Button size="sm" variant="outline" disabled={busy} onClick={handleMarkEmailsSent}>
+              <MailCheck className="mr-1.5 size-4" aria-hidden="true" />
+              Mark Email Sent
+            </Button>
             <Button
               size="sm"
               variant="destructive"
@@ -464,15 +504,18 @@ function LeadsPage() {
                     sortDir={sortDir}
                     onSort={toggleSort}
                   />
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Email sent
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {rows.map((lead) => (
+                {rows.map((lead, index) => (
                   <tr key={lead.id} className="hover:bg-muted/30">
                     <td className="px-3 py-2">
                       <Checkbox
                         checked={selected.has(lead.id)}
-                        onCheckedChange={() => toggleRow(lead.id)}
+                        onClick={(e) => handleRowSelect(lead.id, index, e)}
                         aria-label={`Select ${lead.business_name}`}
                       />
                     </td>
@@ -515,6 +558,9 @@ function LeadsPage() {
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">
                       {lead.next_followup_date ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {lead.email_sent_at ? new Date(lead.email_sent_at).toLocaleDateString() : "—"}
                     </td>
                   </tr>
                 ))}

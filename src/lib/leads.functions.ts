@@ -300,3 +300,28 @@ export const deleteLeads = createServerFn({ method: "POST" })
 
     return { ok: true, count: data.leadIds.length };
   });
+
+/** Marks a row range of leads as having had an outreach email sent, right now. */
+export const markEmailsSent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => idsSchema.parse(data))
+  .handler(async ({ data, context }) => {
+    const sentAt = new Date().toISOString();
+    const { error } = await context.supabase
+      .from("leads")
+      .update({ email_sent_at: sentAt })
+      .in("id", data.leadIds);
+    if (error) throw new Error(error.message);
+
+    await context.supabase.from("lead_activities").insert(
+      data.leadIds.map((leadId) => ({
+        lead_id: leadId,
+        actor_id: context.userId,
+        action: data.leadIds.length > 1 ? "bulk_email_sent" : "email_sent",
+        description: "Marked email sent",
+        detail: { count: data.leadIds.length },
+      })),
+    );
+
+    return { ok: true, count: data.leadIds.length, sentAt };
+  });

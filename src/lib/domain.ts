@@ -242,5 +242,7 @@ export const ACTIVITY_ACTIONS = [
   "settings_changed",
   "demo_data_loaded",
   "demo_data_removed",
+  "email_sent",
+  "bulk_email_sent",
 ] as const;
 export type ActivityAction = (typeof ACTIVITY_ACTIONS)[number];

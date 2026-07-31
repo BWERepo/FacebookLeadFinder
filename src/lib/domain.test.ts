@@ -73,15 +73,29 @@ function tableBody(table: string): string {
  * (`duplicate_certainty IS NULL OR duplicate_certainty IN (...)`), so match on
  * the column name followed by IN and take the parenthesized group. Pass a
  * table name to disambiguate a column that exists on more than one table.
+ *
+ * Defaults to the FIRST match, since some columns legitimately have a second,
+ * narrower `... IN (...)` elsewhere for an unrelated constraint (e.g.
+ * `leads.website_status` also appears inside `leads_qualified_requires_evidence`,
+ * a subset used only there — matching that instead of the real column
+ * definition would be wrong). Pass `useLast: true` for a column whose CHECK
+ * was later widened in place via `ALTER TABLE ... DROP CONSTRAINT ... ADD
+ * CONSTRAINT` (e.g. `lead_activities.action`) — there, the last occurrence in
+ * migration file order is the one actually enforced by the database today.
  */
-function checkValues(column: string, table?: string): string[] {
+function checkValues(
+  column: string,
+  table?: string,
+  options: { useLast?: boolean } = {},
+): string[] {
   const haystack = table ? tableBody(table) : SQL;
-  const pattern = new RegExp(`\\b${column}\\s+IN\\s*\\(([^)]*)\\)`, "i");
-  const match = haystack.match(pattern);
-  if (!match) {
+  const pattern = new RegExp(`\\b${column}\\s+IN\\s*\\(([^)]*)\\)`, "gi");
+  const matches = [...haystack.matchAll(pattern)];
+  if (matches.length === 0) {
     throw new Error(`No CHECK (... ${column} IN (...)) found${table ? ` on public.${table}` : ""}`);
   }
-  return [...match[1].matchAll(/'([^']*)'/g)].map((m) => m[1]);
+  const chosen = options.useLast ? matches[matches.length - 1] : matches[0];
+  return [...chosen[1].matchAll(/'([^']*)'/g)].map((m) => m[1]);
 }
 
 /** Enum values from `CREATE TYPE <name> AS ENUM (...)`. */
@@ -164,7 +178,9 @@ describe("domain vocabularies match the database schema", () => {
   });
 
   it("lead_activities.action", () => {
-    expect(checkValues("action").sort()).toEqual([...ACTIVITY_ACTIONS].sort());
+    expect(checkValues("action", undefined, { useLast: true }).sort()).toEqual(
+      [...ACTIVITY_ACTIONS].sort(),
+    );
   });
 });
 
