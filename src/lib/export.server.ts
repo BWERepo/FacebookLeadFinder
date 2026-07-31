@@ -18,6 +18,19 @@ import { EXPORT_COLUMNS, exportHeaders, exportRowValues, type ExportableLead } f
 /** Columns whose value should be written as a hyperlink when it's a safe URL. */
 const HYPERLINK_COLUMN_KEYS = new Set(["facebook_url", "potential_website_url"]);
 
+/**
+ * Excel's own default hyperlink style (blue, underlined). Setting
+ * `cell.value = { text, hyperlink }` creates a real, clickable hyperlink
+ * relationship on its own, but ExcelJS does not apply this styling
+ * automatically — an unstyled hyperlink cell is functionally clickable but
+ * renders as plain black text, which reads as "not a hyperlink" to anyone
+ * opening the file.
+ */
+const HYPERLINK_FONT: Partial<ExcelJS.Font> = {
+  color: { argb: "FF0563C1" },
+  underline: true,
+};
+
 export async function buildLeadsWorkbookBuffer(leads: readonly ExportableLead[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Leads");
@@ -37,6 +50,7 @@ export async function buildLeadsWorkbookBuffer(leads: readonly ExportableLead[])
       if (HYPERLINK_COLUMN_KEYS.has(column.key) && typeof raw === "string" && raw.length > 0) {
         if (isSafeExternalUrl(raw)) {
           cell.value = { text: raw, hyperlink: raw };
+          cell.font = HYPERLINK_FONT;
           return;
         }
         // Not a safe scheme — fall through to a plain, guarded text cell

@@ -52,6 +52,17 @@ describe("buildLeadsWorkbookBuffer", () => {
     expect(value.hyperlink).toBe(LEAD.facebook_url);
   });
 
+  it("styles the hyperlink cell so it visually reads as a link, not plain text", async () => {
+    const buffer = await buildLeadsWorkbookBuffer([LEAD]);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as any);
+
+    const sheet = workbook.getWorksheet("Leads")!;
+    const cell = sheet.getRow(2).getCell(5);
+    expect(cell.font?.underline).toBe(true);
+    expect(cell.font?.color?.argb).toBe("FF0563C1");
+  });
+
   it("neutralizes a formula-triggering business name instead of writing a formula", async () => {
     const buffer = await buildLeadsWorkbookBuffer([{ ...LEAD, business_name: "=1+1" }]);
     const workbook = new ExcelJS.Workbook();
