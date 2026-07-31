@@ -297,7 +297,13 @@ function generateBusiness(
       : `https://${normalizeBusinessName(name).replace(/\s+/g, "")}.com`,
     listingUrl: `https://maps.example/mock-gen-${index}`,
     scenario: isQualifying ? "facebook_only" : "has_website",
-    facebookUrl: `https://facebook.com/${normalizeBusinessName(name).replace(/\s+/g, "")}`,
+    // Deliberately not a plausible vanity slug like facebook.com/BlueRidgeBakery
+    // — the generated name pool is a small, generic set of real-sounding
+    // adjective/noun combos ("Blue Ridge Bakery", "Summit Dental", ...) that
+    // can and does collide with an actual claimed page for an unrelated real
+    // business. `profile.php?id=` is Facebook's numeric-ID URL form; a
+    // synthetic ID keyed off the mock index can't collide with anything real.
+    facebookUrl: `https://facebook.com/profile.php?id=61${String(index).padStart(13, "0")}`,
     email: null,
     emailStatus: "not_found",
   };
