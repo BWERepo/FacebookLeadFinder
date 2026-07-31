@@ -35,6 +35,15 @@ const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 const FETCH_TIMEOUT_MS = 8_000;
 /** How many of Brave's top results to actually fetch and scan for an email. */
 const MAX_RESULTS_TO_PROBE = 3;
+/**
+ * Email search casts a wider net than the Facebook/discovery searches above:
+ * more results per query, and multiple query phrasings, since a business's
+ * email is often on a directory listing or contact page that a single
+ * phrasing of the query doesn't surface.
+ */
+const MAX_EMAIL_RESULTS_TO_PROBE = 6;
+/** Link text/href fragments that suggest a page with more contact detail than the homepage. */
+const CONTACT_LINK_PATTERN = /contact|about|get-in-touch|reach-us/i;
 
 export type BraveSearchResult = {
   title: string;
@@ -77,7 +86,8 @@ export async function braveWebSearch(
   }));
 }
 
-async function fetchAndExtractEmail(url: string): Promise<string | null> {
+/** Fetches a single URL and returns its HTML, or null on any failure/non-HTML response. */
+async function fetchHtml(url: string): Promise<string | null> {
   if (!normalizeUrl(url)) return null;
 
   const controller = new AbortController();
@@ -96,12 +106,45 @@ async function fetchAndExtractEmail(url: string): Promise<string | null> {
     if (!response.ok) return null;
     const contentType = response.headers.get("content-type") ?? "";
     if (!contentType.includes("text/html")) return null;
-    return extractEmailFromHtml(await response.text());
+    return await response.text();
   } catch {
     return null;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/** The first same-origin contact/about-ish link found in a page's markup, resolved to an absolute URL. */
+function findContactLink(html: string, pageUrl: string): string | null {
+  const hrefs = [...html.matchAll(/<a\s+[^>]*href=["']([^"'#]+)["']/gi)].map((m) => m[1]);
+  for (const href of hrefs) {
+    if (!CONTACT_LINK_PATTERN.test(href)) continue;
+    try {
+      const resolved = new URL(href, pageUrl);
+      if (resolved.origin === new URL(pageUrl).origin) return resolved.toString();
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/**
+ * Fetches a result page and scans it for an email; if none is found, follows
+ * one contact/about-ish link on that same page and scans that too. A
+ * business's email is often on /contact rather than the page Brave indexed.
+ */
+async function fetchAndExtractEmail(url: string): Promise<string | null> {
+  const html = await fetchHtml(url);
+  if (!html) return null;
+
+  const fromPage = extractEmailFromHtml(html);
+  if (fromPage) return fromPage;
+
+  const contactUrl = findContactLink(html, url);
+  if (!contactUrl) return null;
+  const contactHtml = await fetchHtml(contactUrl);
+  return contactHtml ? extractEmailFromHtml(contactHtml) : null;
 }
 
 /**
@@ -121,15 +164,31 @@ export async function findEmailViaWebSearch(business: {
 }): Promise<string | null> {
   if (!isBraveSearchConfigured()) return null;
 
-  const query = `"${business.name}" ${business.city}, ${business.state} email`;
-  const results = await braveWebSearch(query);
+  const location = `${business.city}, ${business.state}`;
+  const queries = [
+    `"${business.name}" ${location} email`,
+    `"${business.name}" ${location} contact`,
+    `"${business.name}" ${location} "email address"`,
+  ];
 
-  for (const result of results.slice(0, MAX_RESULTS_TO_PROBE)) {
+  const seen = new Set<string>();
+  const results: BraveSearchResult[] = [];
+  for (const query of queries) {
+    for (const result of await braveWebSearch(query)) {
+      if (!result.url || seen.has(result.url)) continue;
+      seen.add(result.url);
+      results.push(result);
+    }
+  }
+
+  const toProbe = results.slice(0, MAX_EMAIL_RESULTS_TO_PROBE);
+
+  for (const result of toProbe) {
     const fromSnippet = extractEmailFromHtml(result.description);
     if (fromSnippet) return fromSnippet;
   }
 
-  for (const result of results.slice(0, MAX_RESULTS_TO_PROBE)) {
+  for (const result of toProbe) {
     const fromPage = await fetchAndExtractEmail(result.url);
     if (fromPage) return fromPage;
   }

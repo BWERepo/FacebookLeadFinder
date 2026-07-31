@@ -125,82 +125,122 @@ describe("findEmailViaWebSearch", () => {
     expect(await findEmailViaWebSearch(business)).toBeNull();
   });
 
-  it("finds an email straight from a result's search snippet, without fetching the page", async () => {
+  it("finds an email straight from a result's search snippet, without fetching any page", async () => {
     process.env.BRAVE_SEARCH_API_KEY = "test-key";
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({
-        web: {
-          results: [
-            {
-              title: "Joe's Plumbing",
-              url: "https://yelp.com/biz/joes-plumbing",
-              description: "Contact: joe@joesplumbing.com or call today.",
-            },
-          ],
-        },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const email = await findEmailViaWebSearch(business);
-    expect(email).toBe("joe@joesplumbing.com");
-    // Only the search call — never fetched the result page itself.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("falls back to fetching a result page when no snippet has an email", async () => {
-    process.env.BRAVE_SEARCH_API_KEY = "test-key";
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse({
-          web: {
-            results: [
-              {
-                title: "Joe's Plumbing - Yelp",
-                url: "https://yelp.com/biz/joes-plumbing",
-                description: "5-star rated plumber in Knoxville.",
-              },
-            ],
-          },
-        }),
-      )
-      .mockResolvedValueOnce(htmlResponse(`<a href="mailto:joe@joesplumbing.com">Email</a>`));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const email = await findEmailViaWebSearch(business);
-    expect(email).toBe("joe@joesplumbing.com");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("returns null when nothing turns up anywhere", async () => {
-    process.env.BRAVE_SEARCH_API_KEY = "test-key";
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.startsWith("https://api.search.brave.com")) {
+        return Promise.resolve(
           jsonResponse({
             web: {
               results: [
                 {
                   title: "Joe's Plumbing",
-                  url: "https://yelp.com/biz/joes",
-                  description: "5 stars",
+                  url: "https://yelp.com/biz/joes-plumbing",
+                  description: "Contact: joe@joesplumbing.com or call today.",
                 },
               ],
             },
           }),
-        )
-        .mockResolvedValueOnce(htmlResponse(`<p>No contact info.</p>`)),
-    );
+        );
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const email = await findEmailViaWebSearch(business);
+    expect(email).toBe("joe@joesplumbing.com");
+    // Only search calls (one per query variant) — never fetched the result page itself.
+    expect(fetchMock).toHaveBeenCalled();
+    for (const [url] of fetchMock.mock.calls) {
+      expect(String(url)).toContain("api.search.brave.com");
+    }
+  });
+
+  it("falls back to fetching a result page when no snippet has an email", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "test-key";
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.startsWith("https://api.search.brave.com")) {
+        return Promise.resolve(
+          jsonResponse({
+            web: {
+              results: [
+                {
+                  title: "Joe's Plumbing - Yelp",
+                  url: "https://yelp.com/biz/joes-plumbing",
+                  description: "5-star rated plumber in Knoxville.",
+                },
+              ],
+            },
+          }),
+        );
+      }
+      return Promise.resolve(htmlResponse(`<a href="mailto:joe@joesplumbing.com">Email</a>`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const email = await findEmailViaWebSearch(business);
+    expect(email).toBe("joe@joesplumbing.com");
+  });
+
+  it("follows a contact-page link when the result page itself has no email", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "test-key";
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.startsWith("https://api.search.brave.com")) {
+        return Promise.resolve(
+          jsonResponse({
+            web: {
+              results: [
+                {
+                  title: "Joe's Plumbing",
+                  url: "https://joesplumbing.com/",
+                  description: "5-star rated plumber in Knoxville.",
+                },
+              ],
+            },
+          }),
+        );
+      }
+      if (url === "https://joesplumbing.com/") {
+        return Promise.resolve(htmlResponse(`<a href="/contact-us">Contact</a>`));
+      }
+      if (url === "https://joesplumbing.com/contact-us") {
+        return Promise.resolve(htmlResponse(`<a href="mailto:joe@joesplumbing.com">Email</a>`));
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const email = await findEmailViaWebSearch(business);
+    expect(email).toBe("joe@joesplumbing.com");
+  });
+
+  it("returns null when nothing turns up anywhere", async () => {
+    process.env.BRAVE_SEARCH_API_KEY = "test-key";
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.startsWith("https://api.search.brave.com")) {
+        return Promise.resolve(
+          jsonResponse({
+            web: {
+              results: [
+                { title: "Joe's Plumbing", url: "https://yelp.com/biz/joes", description: "5 stars" },
+              ],
+            },
+          }),
+        );
+      }
+      return Promise.resolve(htmlResponse(`<p>No contact info.</p>`));
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     expect(await findEmailViaWebSearch(business)).toBeNull();
   });
 
   it("never guesses an address from the business name or a domain", async () => {
     process.env.BRAVE_SEARCH_API_KEY = "test-key";
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ web: { results: [] } })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ web: { results: [] } }))),
+    );
     // No results at all — a naive implementation might be tempted to build
     // "joesplumbing@joesplumbing.com" from the business name. This must not happen.
     expect(await findEmailViaWebSearch(business)).toBeNull();

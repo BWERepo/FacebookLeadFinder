@@ -342,20 +342,22 @@ describe("createGooglePlacesProvider", () => {
       process.env.BRAVE_SEARCH_API_KEY = "brave-key";
       vi.stubGlobal(
         "fetch",
-        vi.fn().mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              web: {
-                results: [
-                  {
-                    title: "Rosalita's Taqueria - Yelp",
-                    url: "https://yelp.com/biz/rosalitas",
-                    description: "Contact: hello@rosalitastaqueria.com",
-                  },
-                ],
-              },
-            }),
-            { status: 200, headers: { "content-type": "application/json" } },
+        vi.fn().mockImplementation(() =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                web: {
+                  results: [
+                    {
+                      title: "Rosalita's Taqueria - Yelp",
+                      url: "https://yelp.com/biz/rosalitas",
+                      description: "Contact: hello@rosalitastaqueria.com",
+                    },
+                  ],
+                },
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
           ),
         ),
       );
