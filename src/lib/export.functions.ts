@@ -32,6 +32,9 @@ const exportLeadsSchema = z.object({
   categorySlug: z.string().max(100).optional(),
   state: z.string().max(2).optional(),
   archived: z.enum(["active", "archived", "all"]).default("active"),
+  // Scopes the export to one search's results — used by the Find Leads page's
+  // export button, mirroring listLeadsForSearch's filter in leads.functions.ts.
+  searchId: z.string().uuid().optional(),
 });
 
 export const exportLeads = createServerFn({ method: "POST" })
@@ -42,6 +45,7 @@ export const exportLeads = createServerFn({ method: "POST" })
 
     if (data.archived === "active") query = query.is("archived_at", null);
     if (data.archived === "archived") query = query.not("archived_at", "is", null);
+    if (data.searchId) query = query.eq("source_search_id", data.searchId);
     if (data.leadStatus) query = query.eq("lead_status", data.leadStatus);
     if (data.websiteStatus) query = query.eq("website_status", data.websiteStatus);
     if (data.qualifiedOnly) query = query.eq("qualified", true);
