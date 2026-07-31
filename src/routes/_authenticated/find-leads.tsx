@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download } from "lucide-react";
@@ -23,15 +23,37 @@ import { getSettings } from "@/lib/settings.functions";
 import type { SearchCriteria } from "@/lib/search-criteria";
 import type { ExportFormat } from "@/lib/domain";
 
+type FindLeadsSearch = { searchId?: string };
+
 export const Route = createFileRoute("/_authenticated/find-leads")({
+  validateSearch: (search: Record<string, unknown>): FindLeadsSearch => ({
+    searchId: typeof search.searchId === "string" ? search.searchId : undefined,
+  }),
   component: FindLeadsPage,
 });
 
 function FindLeadsPage() {
-  const [searchId, setSearchId] = useState<string | null>(null);
+  // Kept in the URL (not just component state) so a running or just-finished
+  // search survives leaving this page and coming back, or a refresh — the
+  // whole point being that "no visibility on running searches" bug this
+  // fixes. useSearchJob already resumes a job that's still pending/running
+  // when handed its id, so this "just" wires that existing capability up to
+  // actually persist across navigation.
+  const { searchId: routeSearchId } = Route.useSearch();
+  const navigate = useNavigate();
+  const [searchId, setSearchIdState] = useState<string | null>(routeSearchId ?? null);
   const [starting, setStarting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const job = useSearchJob(searchId);
+
+  function setSearchId(id: string | null) {
+    setSearchIdState(id);
+    navigate({
+      to: "/find-leads",
+      search: id ? { searchId: id } : {},
+      replace: true,
+    });
+  }
 
   // Same queryKey settings.tsx uses, so this shares its cache rather than
   // firing a second request. The forms need this loaded before they mount so

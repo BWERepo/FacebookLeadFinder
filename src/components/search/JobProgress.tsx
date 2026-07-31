@@ -37,7 +37,7 @@ function useElapsed(
   return formatElapsed(end - new Date(startedAt).getTime());
 }
 
-const STATUS_LABEL: Record<string, string> = {
+export const STATUS_LABEL: Record<string, string> = {
   pending: "Starting…",
   running: "Searching…",
   completed: "Completed",
@@ -46,7 +46,7 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
-function StatusIcon({ status }: { status: string }) {
+export function StatusIcon({ status }: { status: string }) {
   if (status === "completed")
     return <CheckCircle2 className="size-5 text-status-qualified" aria-hidden="true" />;
   if (status === "failed")
