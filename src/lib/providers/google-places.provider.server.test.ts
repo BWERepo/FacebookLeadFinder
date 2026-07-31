@@ -113,6 +113,17 @@ describe("textQueryFor", () => {
     };
     expect(textQueryFor(criteria)).toBe("Restaurants in Knox, TN");
   });
+
+  it("joins several comma-selected categories with 'or'", () => {
+    const criteria: ZipRadiusCriteria = {
+      searchType: "zip_radius",
+      zip: "37902",
+      radiusMiles: 10,
+      category: "Restaurants, Plumbers",
+      maxResults: 100,
+    };
+    expect(textQueryFor(criteria)).toBe("Restaurants or Plumbers near 37902");
+  });
 });
 
 describe("createGooglePlacesProvider", () => {

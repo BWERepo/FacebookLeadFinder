@@ -7,7 +7,11 @@ import { z } from "zod";
 
 import { isValidStateCode } from "@/data/states";
 
-const categorySchema = z.string().trim().max(80).default("");
+// A comma-joined list of one or more category labels — the Find Leads form's
+// category picker supports selecting several presets (plus one custom entry)
+// at once. Generous max length since several full preset labels can be
+// joined together.
+const categorySchema = z.string().trim().max(300).default("");
 const maxResultsSchema = z.number().int().min(1).max(500).default(100);
 
 // A plain shape check, deliberately not imported from @/data/geo: that module

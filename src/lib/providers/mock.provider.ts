@@ -307,7 +307,7 @@ function generateBusiness(
     latitude: 35.96 + (rand() - 0.5) * 0.05,
     longitude: -83.92 + (rand() - 0.5) * 0.05,
     phone,
-    category: criteria.category || "Other",
+    category: criteria.category.split(",")[0]?.trim() || "Other",
     websiteUri: isQualifying
       ? null
       : `https://${normalizeBusinessName(name).replace(/\s+/g, "")}.com`,
@@ -362,8 +362,13 @@ function matchesLocation(business: MockBusiness, criteria: SearchCriteria): bool
 }
 
 function matchesCategory(business: MockBusiness, criteria: SearchCriteria): boolean {
-  if (!criteria.category) return true;
-  return business.category.toLowerCase().includes(criteria.category.toLowerCase());
+  const tokens = criteria.category
+    .split(",")
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+  if (tokens.length === 0) return true;
+  const category = business.category.toLowerCase();
+  return tokens.some((token) => category.includes(token));
 }
 
 export function createMockProvider(): SearchProvider {

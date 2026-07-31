@@ -132,9 +132,24 @@ export function mapPlaceToRawBusiness(place: Place, categoryHint: string): RawBu
 
 export { isFacebookWebsiteUri };
 
+/**
+ * `criteria.category` can hold several comma-joined labels now (the Find
+ * Leads form's category picker supports multi-select) — resolve each token
+ * on its own and join with "or" so the natural-language query reads as a
+ * real either/or rather than a single garbled phrase.
+ */
+function categoryQueryText(raw: string): string {
+  const tokens = raw
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (tokens.length === 0) return resolveCategory("").label;
+  return tokens.map((t) => resolveCategory(t).label).join(" or ");
+}
+
 /** The text query sent to `:searchText` for the two criteria modes with no real center point. */
 export function textQueryFor(criteria: SearchCriteria): string {
-  const category = resolveCategory(criteria.category).label;
+  const category = categoryQueryText(criteria.category);
   switch (criteria.searchType) {
     case "zip_radius":
       return `${category} near ${criteria.zip}`;
@@ -200,7 +215,10 @@ export function createGooglePlacesProvider(): SearchProvider {
     available: true,
 
     async searchBusinesses(criteria, cursor: ProviderCursor): Promise<SearchPage> {
-      const categoryHint = resolveCategory(criteria.category).label;
+      // Only used as a fallback when a Place has no primaryTypeDisplayName of
+      // its own — take the first selected category as the hint when several
+      // are selected, since a lead can only carry one category label.
+      const categoryHint = resolveCategory(criteria.category.split(",")[0]?.trim() ?? "").label;
 
       // A three-stage discovery chain, chained entirely through sentinel
       // "page tokens" that are never real Places tokens — each stage's
