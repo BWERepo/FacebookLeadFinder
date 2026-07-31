@@ -40,7 +40,7 @@ import { resolveCategory } from "@/lib/categories";
 const PLACES_BASE_URL = "https://places.googleapis.com/v1/places";
 const PAGE_SIZE = 20;
 
-const SEARCH_FIELD_MASK = [
+const SEARCH_FIELD_MASK_COMMON = [
   "places.id",
   "places.displayName",
   "places.formattedAddress",
@@ -49,8 +49,14 @@ const SEARCH_FIELD_MASK = [
   "places.internationalPhoneNumber",
   "places.websiteUri",
   "places.primaryTypeDisplayName",
-  "nextPageToken",
-].join(",");
+];
+
+// :searchNearby's response has no `nextPageToken` field at all (unlike
+// :searchText, which pages) — Places (New) rejects the *entire* request with
+// a 400 INVALID_ARGUMENT if the field mask references a field that doesn't
+// exist on the endpoint's response type, so the mask can't be shared as-is.
+const SEARCH_TEXT_FIELD_MASK = [...SEARCH_FIELD_MASK_COMMON, "nextPageToken"].join(",");
+const SEARCH_NEARBY_FIELD_MASK = SEARCH_FIELD_MASK_COMMON.join(",");
 
 type PlaceAddressComponent = {
   longText?: string;
@@ -166,7 +172,8 @@ export function createGooglePlacesProvider(): SearchProvider {
         headers: {
           "Content-Type": "application/json",
           "X-Goog-Api-Key": apiKey,
-          "X-Goog-FieldMask": SEARCH_FIELD_MASK,
+          "X-Goog-FieldMask":
+            endpoint === "searchNearby" ? SEARCH_NEARBY_FIELD_MASK : SEARCH_TEXT_FIELD_MASK,
         },
         body: JSON.stringify(body),
       },
