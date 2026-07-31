@@ -45,6 +45,9 @@ export type ProviderCursor = {
   /** Precomputed ZIP queue for county/area-code searches (see job-state.ts). */
   zipQueue?: readonly string[];
   zipIndex?: number;
+  /** Google Places: the comma-selected categories, worked through one at a time — see google-places.provider.server.ts's CATEGORY_ADVANCE. */
+  categoryQueue?: readonly string[];
+  categoryIndex?: number;
 };
 
 export type SearchPage = {
@@ -52,6 +55,8 @@ export type SearchPage = {
   nextPageToken: string | null;
   /** Outbound calls this page cost, for the job's provider_calls counter. */
   calls: number;
+  /** Extra cursor fields a provider wants persisted alongside nextPageToken (e.g. categoryQueue/categoryIndex). Merged over the old cursor, same as pageToken. */
+  cursorPatch?: Partial<ProviderCursor>;
 };
 
 export type FacebookPageResult = {

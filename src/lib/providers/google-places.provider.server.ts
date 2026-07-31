@@ -52,8 +52,29 @@ const PAGE_SIZE = 20;
 const SEARCH_TEXT_FALLBACK = "__search_text_fallback__";
 /** See searchBusinesses — signals "switch to the site:facebook.com discovery pass now". */
 const FACEBOOK_SEARCH_FALLBACK = "__facebook_search_fallback__";
+/**
+ * Signals "the previous category's whole 3-stage chain is exhausted — restart
+ * it from stage 1 for the next category in the queue," not a real Places
+ * token. Google Places' :searchText is a relevance ranker over one phrase, not
+ * a boolean query engine — "Restaurants or Bakeries near X" was tried and in
+ * practice just returns whichever category ranks higher, silently dropping
+ * the other(s). Running each selected category as its own full search (and
+ * concatenating the pages) is the only way multi-category search actually
+ * covers every category, so `criteria.category`'s comma-joined labels are
+ * queued here and worked through one at a time across chunks.
+ */
+const CATEGORY_ADVANCE = "__category_advance__";
 /** Caps the Places lookup calls the Facebook-discovery pass can spend confirming candidate names. */
 const MAX_FACEBOOK_LOOKUPS = 10;
+
+/** `criteria.category`'s comma-joined labels, as an ordered queue — a blank/empty category is still a one-entry queue (no filter). */
+function splitCategories(raw: string): string[] {
+  const tokens = raw
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  return tokens.length > 0 ? tokens : [""];
+}
 
 const SEARCH_FIELD_MASK_COMMON = [
   "places.id",
@@ -215,10 +236,18 @@ export function createGooglePlacesProvider(): SearchProvider {
     available: true,
 
     async searchBusinesses(criteria, cursor: ProviderCursor): Promise<SearchPage> {
-      // Only used as a fallback when a Place has no primaryTypeDisplayName of
-      // its own — take the first selected category as the hint when several
-      // are selected, since a lead can only carry one category label.
-      const categoryHint = resolveCategory(criteria.category.split(",")[0]?.trim() ?? "").label;
+      // Several categories run as entirely separate searches, one at a time
+      // across chunks — see CATEGORY_ADVANCE for why. The queue is computed
+      // once (from criteria.category) and persisted in the cursor from then on.
+      const categoryQueue = cursor.categoryQueue ?? splitCategories(criteria.category);
+      const categoryIndex = cursor.categoryIndex ?? 0;
+      const currentCategory = categoryQueue[categoryIndex] ?? "";
+      const categoryHint = resolveCategory(currentCategory).label;
+      // The chain below reasons about "this category's own stage progress" —
+      // a CATEGORY_ADVANCE cursor means the previous category just finished,
+      // so this category's chain hasn't started yet (same as cursor={}).
+      const chainPageToken = cursor.pageToken === CATEGORY_ADVANCE ? undefined : cursor.pageToken;
+      const singleCategoryCriteria = { ...criteria, category: currentCategory } as SearchCriteria;
 
       // A three-stage discovery chain, chained entirely through sentinel
       // "page tokens" that are never real Places tokens — each stage's
@@ -231,7 +260,8 @@ export function createGooglePlacesProvider(): SearchProvider {
       //   3. A `site:facebook.com` Brave web search for businesses Places'
       //      own search missed or ranked low, each looked up for real via
       //      Places (by name) to get an authoritative record before it's
-      //      treated as a genuine candidate. One-shot, no further paging.
+      //      treated as a genuine candidate. One-shot -> CATEGORY_ADVANCE (or
+      //      null if this was the last category in the queue).
       //
       // Stage 3 exists because Places' own ranking/coverage sometimes just
       // doesn't surface a business that would otherwise qualify — see
@@ -239,7 +269,7 @@ export function createGooglePlacesProvider(): SearchProvider {
       // compliance boundary (never fetches Facebook, only Brave's own
       // already-indexed results).
       const nearby =
-        criteria.searchType === "zip_radius" && !cursor.pageToken
+        criteria.searchType === "zip_radius" && !chainPageToken
           ? (() => {
               const center = zipToCentroid(criteria.zip);
               return center ? { center, radiusMiles: criteria.radiusMiles } : null;
@@ -247,7 +277,7 @@ export function createGooglePlacesProvider(): SearchProvider {
           : null;
 
       let businesses: RawBusiness[];
-      let nextPageToken: string | null;
+      let chainNextPageToken: string | null;
 
       if (nearby) {
         const response = await callPlaces("searchNearby", {
@@ -261,32 +291,47 @@ export function createGooglePlacesProvider(): SearchProvider {
           },
         });
         businesses = (response.places ?? []).map((p) => mapPlaceToRawBusiness(p, categoryHint));
-        nextPageToken = SEARCH_TEXT_FALLBACK;
-      } else if (cursor.pageToken === FACEBOOK_SEARCH_FALLBACK) {
-        const candidates = await discoverViaFacebookSearch(textQueryFor(criteria));
+        chainNextPageToken = SEARCH_TEXT_FALLBACK;
+      } else if (chainPageToken === FACEBOOK_SEARCH_FALLBACK) {
+        const candidates = await discoverViaFacebookSearch(textQueryFor(singleCategoryCriteria));
         businesses = [];
         for (const candidate of candidates.slice(0, MAX_FACEBOOK_LOOKUPS)) {
           const lookup = await callPlaces("searchText", {
-            textQuery: `${candidate.name} ${textQueryFor(criteria)}`,
+            textQuery: `${candidate.name} ${textQueryFor(singleCategoryCriteria)}`,
           });
           const first = lookup.places?.[0];
           if (first) businesses.push(mapPlaceToRawBusiness(first, categoryHint));
         }
-        nextPageToken = null; // one-shot — nothing left to chain to after this
+        chainNextPageToken = null; // one-shot — nothing left to chain to after this
       } else {
         const pageToken =
-          cursor.pageToken && cursor.pageToken !== SEARCH_TEXT_FALLBACK
-            ? cursor.pageToken
-            : undefined;
+          chainPageToken && chainPageToken !== SEARCH_TEXT_FALLBACK ? chainPageToken : undefined;
         const response = await callPlaces("searchText", {
-          textQuery: textQueryFor(criteria),
+          textQuery: textQueryFor(singleCategoryCriteria),
           pageToken,
         });
         businesses = (response.places ?? []).map((p) => mapPlaceToRawBusiness(p, categoryHint));
-        nextPageToken = response.nextPageToken ?? FACEBOOK_SEARCH_FALLBACK;
+        chainNextPageToken = response.nextPageToken ?? FACEBOOK_SEARCH_FALLBACK;
       }
 
-      return { businesses, nextPageToken, calls: 1 };
+      // This category's own chain just finished — move on to the next one in
+      // the queue (restarting its chain from stage 1), or finish for real if
+      // that was the last one.
+      let nextPageToken: string | null;
+      let nextCategoryIndex = categoryIndex;
+      if (chainNextPageToken === null && categoryIndex + 1 < categoryQueue.length) {
+        nextPageToken = CATEGORY_ADVANCE;
+        nextCategoryIndex = categoryIndex + 1;
+      } else {
+        nextPageToken = chainNextPageToken;
+      }
+
+      return {
+        businesses,
+        nextPageToken,
+        calls: 1,
+        cursorPatch: { categoryQueue, categoryIndex: nextCategoryIndex },
+      };
     },
 
     async findFacebookPage(business): Promise<FacebookPageResult> {

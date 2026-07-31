@@ -380,7 +380,7 @@ async function runDiscoverChunk(
     .update({
       candidates_discovered: discovered,
       provider_calls: providerCalls,
-      cursor: { ...cursor, pageToken: page.nextPageToken },
+      cursor: { ...cursor, ...page.cursorPatch, pageToken: page.nextPageToken },
       phase: "verify",
       notes,
       chunk_count: (job.chunk_count as number) + 1,

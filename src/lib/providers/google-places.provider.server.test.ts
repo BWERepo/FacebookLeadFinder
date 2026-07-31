@@ -295,6 +295,65 @@ describe("createGooglePlacesProvider", () => {
     delete process.env.BRAVE_SEARCH_API_KEY;
   });
 
+  it("runs each selected category as its own full search rather than one combined query", async () => {
+    // Places' :searchText is a relevance ranker, not a boolean query engine —
+    // "Restaurants or Bakeries near X" was found in practice to just return
+    // whichever category ranked higher, dropping the other entirely. Each
+    // category must get its own :searchText call.
+    process.env.GOOGLE_PLACES_API_KEY = "test-key";
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ places: [] }), { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = createGooglePlacesProvider();
+    const criteria: AreaCodeCriteria = {
+      searchType: "area_code",
+      areaCode: "865",
+      city: "Knoxville",
+      state: "TN",
+      category: "Restaurants, Bakeries",
+      maxResults: 100,
+    };
+
+    // Page 1: :searchText for "Restaurants" runs out immediately (no
+    // nextPageToken) -> FACEBOOK_SEARCH_FALLBACK for category 1.
+    const page1 = await provider.searchBusinesses(criteria, {});
+    const body1 = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body1.textQuery).toBe("Restaurants in Knoxville, TN");
+    expect(page1.nextPageToken).toBe("__facebook_search_fallback__");
+    expect(page1.cursorPatch).toEqual({
+      categoryQueue: ["Restaurants", "Bakeries"],
+      categoryIndex: 0,
+    });
+
+    // Page 2: the one-shot Facebook-discovery pass for "Restaurants" (no
+    // BRAVE_SEARCH_API_KEY configured, so it finds nothing) -> category 1's
+    // chain is exhausted, advance to category 2.
+    const page2 = await provider.searchBusinesses(criteria, {
+      pageToken: page1.nextPageToken,
+      ...page1.cursorPatch,
+    });
+    expect(page2.nextPageToken).toBe("__category_advance__");
+    expect(page2.cursorPatch).toEqual({
+      categoryQueue: ["Restaurants", "Bakeries"],
+      categoryIndex: 1,
+    });
+
+    // Page 3: category 2's chain restarts from :searchText for "Bakeries".
+    const page3 = await provider.searchBusinesses(criteria, {
+      pageToken: page2.nextPageToken,
+      ...page2.cursorPatch,
+    });
+    const lastCall = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+    const body3 = JSON.parse(lastCall[1].body);
+    expect(body3.textQuery).toBe("Bakeries in Knoxville, TN");
+    expect(page3.cursorPatch).toEqual({
+      categoryQueue: ["Restaurants", "Bakeries"],
+      categoryIndex: 1,
+    });
+  });
+
   it("throws ProviderAuthError on a 401/403 response", async () => {
     process.env.GOOGLE_PLACES_API_KEY = "test-key";
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));
