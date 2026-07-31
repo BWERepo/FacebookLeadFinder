@@ -13,16 +13,32 @@
  * nearest one). `main` and `assets` are nitro's to own — never touch them.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const ENVIRONMENTS = {
-  staging: { name: "facebookleadfinder-staging", routes: null },
+  staging: {
+    name: "facebookleadfinder-staging",
+    // A plain Route (not a Custom Domain) on BWE's zone, since
+    // businesswebexpress.com itself is already claimed as a Custom Domain by
+    // the Business Web Express production Worker — Custom Domains bind the
+    // whole hostname, so this sub-path is carved out via a Route instead,
+    // which Cloudflare lets coexist with a Custom Domain on the same zone as
+    // long as it's more specific. No "custom_domain": true here.
+    routes: [
+      {
+        pattern: "businesswebexpress.com/Staging.FacebookLeadFinder*",
+        zone_name: "businesswebexpress.com",
+      },
+    ],
+    basePath: "/Staging.FacebookLeadFinder/",
+  },
   production: {
     name: "facebookleadfinder",
     // Fill in once a custom domain is attached; until then the Worker is
     // reachable at facebookleadfinder.<subdomain>.workers.dev.
     routes: null,
+    basePath: "/",
   },
 };
 
@@ -47,8 +63,27 @@ function run(cmd, args, { cwd = root, env: extraEnv = {} } = {}) {
 
 console.log(`\n=> Building v${version} for ${target}\n`);
 run("npm", ["run", "build"], {
-  env: { VITE_DEPLOY_APP_VERSION: version, VITE_DEPLOY_ENV: target },
+  env: { VITE_DEPLOY_APP_VERSION: version, VITE_DEPLOY_ENV: target, VITE_BASE_PATH: env.basePath },
 });
+
+// Vite's `base` only prefixes the *URLs* referenced in HTML/JS — it doesn't
+// relocate the built files. Cloudflare's Workers Assets binding matches a
+// request's pathname against a file at the same relative path under the
+// configured directory, with no prefix-stripping, so when basePath isn't "/"
+// the built assets have to actually live under that sub-path on disk too, or
+// every asset request 404s even though the route itself matches.
+const trimmedBasePath = env.basePath.replace(/^\/|\/$/g, "");
+if (trimmedBasePath) {
+  const publicDir = resolve(root, ".output/public");
+  const nestedDir = resolve(publicDir, trimmedBasePath);
+  mkdirSync(nestedDir, { recursive: true });
+  for (const entry of readdirSync(publicDir)) {
+    if (entry === trimmedBasePath.split("/")[0]) continue;
+    cpSync(resolve(publicDir, entry), resolve(nestedDir, entry), { recursive: true });
+    rmSync(resolve(publicDir, entry), { recursive: true, force: true });
+  }
+  console.log(`\n=> Nested built assets under /${trimmedBasePath}/ to match basePath\n`);
+}
 
 const generated = resolve(root, ".output/server/wrangler.json");
 const config = JSON.parse(readFileSync(generated, "utf8"));

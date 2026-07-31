@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -65,7 +65,7 @@ function ResetPasswordPage() {
         <CardContent>
           {ready === false ? (
             <Button asChild variant="outline" className="w-full">
-              <a href="/forgot-password">Request a new link</a>
+              <Link to="/forgot-password">Request a new link</Link>
             </Button>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">

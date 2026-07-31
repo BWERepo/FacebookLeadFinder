@@ -15,7 +15,15 @@ import path from "node:path";
 // tanstackStart() does not add a React plugin of its own in this version (see
 // node_modules/@tanstack/react-start/dist/esm/plugin/vite.js) — supplying
 // @vitejs/plugin-react ourselves is required, not optional.
+// Staging is served from a sub-path of businesswebexpress.com rather than its
+// own domain (see scripts/deploy.mjs) — VITE_BASE_PATH lets that build set
+// Vite's `base`, which TanStack Start also reads to derive its router
+// basepath (see node_modules/@tanstack/start-plugin-core/src/vite/plugin.ts).
+// Production keeps the default "/" since it has its own domain reserved.
+const base = process.env.VITE_BASE_PATH ?? "/";
+
 export default defineConfig({
+  base,
   plugins: [
     tsConfigPaths({ projects: ["./tsconfig.json"] }),
     tailwindcss(),

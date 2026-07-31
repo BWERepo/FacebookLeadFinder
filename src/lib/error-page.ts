@@ -1,7 +1,7 @@
 // Standalone HTML for a server-side crash. Deliberately has no imports, no
 // assets and no client JS: it has to render even when the app bundle is the
 // thing that broke.
-export function renderErrorPage(): string {
+export function renderErrorPage(basePath = "/"): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -25,7 +25,7 @@ export function renderErrorPage(): string {
 <main>
   <h1>This page didn&rsquo;t load</h1>
   <p>Something went wrong on our end. The error has been logged. Try again in a moment.</p>
-  <a href="/">Back to the dashboard</a>
+  <a href="${basePath}">Back to the dashboard</a>
 </main>
 </body>
 </html>`;

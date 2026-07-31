@@ -73,7 +73,7 @@ export default {
     } catch (error) {
       console.error(error);
       return addSecurityHeaders(
-        new Response(renderErrorPage(), {
+        new Response(renderErrorPage(import.meta.env.BASE_URL), {
           status: 500,
           headers: { "content-type": "text/html; charset=utf-8" },
         }),
