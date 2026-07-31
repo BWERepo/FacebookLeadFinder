@@ -42,6 +42,7 @@ function FindLeadsPage() {
     queryFn: () => getSettings(),
   });
   const defaultMaxResults = settingsData?.settings.default_max_results ?? 100;
+  const defaultRadiusMiles = settingsData?.settings.default_radius_miles ?? 10;
 
   async function handleSubmit(criteria: SearchCriteria) {
     setStarting(true);
@@ -110,6 +111,7 @@ function FindLeadsPage() {
             busy={starting || job.running}
             onSubmit={handleSubmit}
             defaultMaxResults={defaultMaxResults}
+            defaultRadiusMiles={defaultRadiusMiles}
           />
         )}
 

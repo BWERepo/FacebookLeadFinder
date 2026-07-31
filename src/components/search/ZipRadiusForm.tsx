@@ -19,13 +19,15 @@ export function ZipRadiusForm({
   busy,
   onSubmit,
   defaultMaxResults = 100,
+  defaultRadiusMiles = 10,
 }: {
   busy: boolean;
   onSubmit: (criteria: ZipRadiusCriteria) => void;
   defaultMaxResults?: number;
+  defaultRadiusMiles?: number;
 }) {
   const [zip, setZip] = useState("");
-  const [radiusMiles, setRadiusMiles] = useState(10);
+  const [radiusMiles, setRadiusMiles] = useState(defaultRadiusMiles);
   const [category, setCategory] = useState("");
   const [maxResults, setMaxResults] = useState(defaultMaxResults);
   const [error, setError] = useState<string | null>(null);

@@ -9,11 +9,14 @@ export function SearchModeTabs({
   busy,
   onSubmit,
   defaultMaxResults = 100,
+  defaultRadiusMiles = 10,
 }: {
   busy: boolean;
   onSubmit: (criteria: SearchCriteria) => void;
   /** The user's Settings default, used to seed each form's "Maximum results" field. */
   defaultMaxResults?: number;
+  /** The user's Settings default, used to seed the ZIP form's "Search radius" field. */
+  defaultRadiusMiles?: number;
 }) {
   return (
     <Card>
@@ -25,7 +28,12 @@ export function SearchModeTabs({
             <TabsTrigger value="state_county">State & county</TabsTrigger>
           </TabsList>
           <TabsContent value="zip_radius">
-            <ZipRadiusForm busy={busy} onSubmit={onSubmit} defaultMaxResults={defaultMaxResults} />
+            <ZipRadiusForm
+              busy={busy}
+              onSubmit={onSubmit}
+              defaultMaxResults={defaultMaxResults}
+              defaultRadiusMiles={defaultRadiusMiles}
+            />
           </TabsContent>
           <TabsContent value="area_code">
             <AreaCodeForm busy={busy} onSubmit={onSubmit} defaultMaxResults={defaultMaxResults} />
