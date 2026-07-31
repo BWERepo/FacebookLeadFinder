@@ -283,11 +283,12 @@ describe("classifyWebsite — never overclaiming", () => {
     expect(result.qualified).toBe(true);
   });
 
-  it("NEVER qualifies a lead without a confirmed Facebook page", () => {
-    // The central rule. No website found + no Facebook page is an unverified
-    // business, not a lead.
+  it("NEVER qualifies a lead without a confirmed Facebook page, even when no website was found either", () => {
+    // The central rule: `qualified` requires a confirmed Facebook page. A
+    // missing website alone is enough to reach `no_website_found` (it's saved
+    // as a lead either way), but it's never `qualified` without Facebook too.
     const result = classifyWebsite(input({ facebookUrl: null }));
-    expect(result.status).toBe("needs_manual_review");
+    expect(result.status).toBe("no_website_found");
     expect(result.qualified).toBe(false);
     expect(result.notes[0]).toMatch(/no Facebook business page has been confirmed/i);
   });

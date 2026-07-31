@@ -48,6 +48,7 @@ import { emailDomain, isFreeEmailDomain, normalizeUrl } from "@/lib/url";
 import { zipsForCounty, zipsForAreaCodeCities } from "@/data/geo";
 import { areaCodeInfo } from "@/data/area-codes";
 import { QUALIFYING_WEBSITE_STATUSES } from "@/lib/domain";
+import { hasContactableIdentity } from "@/lib/candidate-quality";
 
 /** Max concurrently active (pending/running) jobs per user — a rate-limit guard. */
 const MAX_CONCURRENT_JOBS_PER_USER = 2;
@@ -347,8 +348,13 @@ async function runDiscoverChunk(
   let discovered = job.candidates_discovered as number;
   const providerCalls = (job.provider_calls as number) + page.calls;
 
-  if (page.businesses.length > 0) {
-    const rows = page.businesses.map((business) => ({
+  // Filter out pseudo-businesses (a county or township itself, returned by a
+  // broad area text search) before they ever consume a verify-phase provider
+  // call — see candidate-quality.ts.
+  const businesses = page.businesses.filter(hasContactableIdentity);
+
+  if (businesses.length > 0) {
+    const rows = businesses.map((business) => ({
       search_id: job.id,
       processing_state: "queued",
       raw: business,
@@ -356,7 +362,7 @@ async function runDiscoverChunk(
     }));
     const { error } = await supabase.from("search_results").insert(rows);
     if (error) throw new Error(error.message);
-    discovered += page.businesses.length;
+    discovered += businesses.length;
   }
 
   // A discover chunk always hands off to verify next, one provider page at a
@@ -451,8 +457,26 @@ async function runVerifyChunk(
   };
   let lastError: string | null = (job.last_error as string | null) ?? null;
 
+  // A whole chunk can be several websites' worth of outbound fetches — too
+  // long to make a user wait out once they've hit cancel. Re-check
+  // cancel_requested every couple of candidates (cheap: a single indexed
+  // column read) rather than only at the top of the next advanceSearch call.
+  const CANCEL_CHECK_INTERVAL = 2;
+  let checkedSinceLastCancelCheck = 0;
+
   for (const result of queued ?? []) {
     if (Date.now() > deadline) break;
+
+    if (checkedSinceLastCancelCheck >= CANCEL_CHECK_INTERVAL) {
+      checkedSinceLastCancelCheck = 0;
+      const { data: cancelRow } = await supabase
+        .from("searches")
+        .select("cancel_requested")
+        .eq("id", job.id)
+        .single();
+      if (cancelRow?.cancel_requested) break;
+    }
+    checkedSinceLastCancelCheck++;
 
     try {
       await processCandidate(supabase, job, result, provider, counters, verifySettings);
@@ -498,8 +522,7 @@ async function runVerifyChunk(
       .from("leads")
       .select("id", { count: "exact", head: true })
       .eq("source_search_id", job.id)
-      .in("website_status", QUALIFYING_WEBSITE_STATUSES)
-      .not("email", "is", null);
+      .in("website_status", QUALIFYING_WEBSITE_STATUSES);
     const targetMet = (matchedCount ?? 0) >= (job.max_results as number);
     phase = !targetMet && providerHasMore ? "discover" : "finalize";
   }
@@ -623,16 +646,17 @@ async function processCandidate(
   if (fb.url) counters.facebookFound++;
   if (potentialCandidates.length > 0) counters.websitesChecked++;
 
-  // Save any candidate with no apparent independent website AND a confirmed
-  // Facebook page — a found email is a bonus, not a requirement. Everything
-  // else (has a site, or no Facebook page at all) is examined and counted but
-  // never written to the shared leads table. This is what makes the
-  // discover/verify loop's "keep pulling more pages until the target count is
-  // met" logic (above, in runVerifyChunk) mean the same thing as what
-  // actually lands in Saved Leads.
-  const meetsSaveCriteria =
-    (QUALIFYING_WEBSITE_STATUSES as readonly string[]).includes(verification.status) &&
-    Boolean(fb.url);
+  // Save any candidate with no apparent independent website — a confirmed
+  // Facebook page and a found email are both a bonus, not a requirement, for
+  // saving. (A confirmed Facebook page is still required for `qualified`,
+  // see classifyWebsite in verification.ts.) Everything else (has a site) is
+  // examined and counted but never written to the shared leads table. This is
+  // what makes the discover/verify loop's "keep pulling more pages until the
+  // target count is met" logic (above, in runVerifyChunk) mean the same thing
+  // as what actually lands in Saved Leads.
+  const meetsSaveCriteria = (QUALIFYING_WEBSITE_STATUSES as readonly string[]).includes(
+    verification.status,
+  );
   if (!meetsSaveCriteria) {
     await supabase
       .from("search_results")
@@ -641,7 +665,7 @@ async function processCandidate(
         website_status: verification.status,
         qualified,
         confidence_score: confidence.score,
-        error_message: "no website + a confirmed Facebook page required to save a lead",
+        error_message: "no apparent independent website required to save a lead",
       })
       .eq("id", result.id);
     counters.processed++;

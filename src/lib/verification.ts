@@ -355,26 +355,22 @@ export function classifyWebsite(input: VerificationInput): VerificationResult {
     );
   }
 
-  // 6. No website AND no Facebook page is not a qualified lead — it's an
-  //    unverified business. This row is why "no website found" can never be
-  //    reported without the Facebook half of the claim.
-  if (!hasFacebook) {
-    return decide(
-      "needs_manual_review",
-      "No independent website was found, but no Facebook business page has been confirmed from a compliant source.",
-    );
-  }
-
-  // 7. Facebook page confirmed and nothing else at all. The cleanest lead.
+  // 6. Facebook page confirmed and nothing else at all. The cleanest lead.
   const nonFacebookPresence = candidates.filter((c) => c.classification !== "facebook");
-  if (nonFacebookPresence.length === 0) {
+  if (hasFacebook && nonFacebookPresence.length === 0) {
     return decide("facebook_only", "The business's only web presence found is its Facebook page.");
   }
 
-  // 8. Facebook page confirmed, other listings exist, but none is a website.
+  // 7. No independent website was found, whether or not a Facebook page could
+  //    be confirmed. A missing Facebook page no longer blocks the "no
+  //    website" claim itself — it only blocks `qualified` (see `decide`
+  //    above), so an unconfirmed-Facebook business here is still saved as a
+  //    lead, just never marked qualified.
   return decide(
     "no_website_found",
-    `A Facebook page was confirmed and no independent website was found (${nonFacebookPresence.length} other listing${nonFacebookPresence.length === 1 ? "" : "s"} checked).`,
+    hasFacebook
+      ? `A Facebook page was confirmed and no independent website was found (${nonFacebookPresence.length} other listing${nonFacebookPresence.length === 1 ? "" : "s"} checked).`
+      : "No independent website was found, and no Facebook business page has been confirmed from a compliant source.",
   );
 }
 
